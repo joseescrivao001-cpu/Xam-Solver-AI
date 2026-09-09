@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { BrainCircuit, Sparkles, ArrowRight, CheckCircle2 } from "lucide-react";
+import { BrainCircuit, Sparkles, ArrowRight, CheckCircle2, UploadCloud } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function Home() {
