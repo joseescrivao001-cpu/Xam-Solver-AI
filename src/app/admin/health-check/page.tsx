@@ -17,7 +17,7 @@ export default async function HealthCheckPage() {
 
   let geminiTestStatus = "Não testado";
   let geminiTestError = null;
-  let availableModels: any[] = [];
+  let availableModels: { name: string; supportedGenerationMethods: string[] }[] = [];
   let modelFetchError = null;
 
   if (process.env.GOOGLE_GEMINI_API_KEY) {
@@ -32,8 +32,8 @@ export default async function HealthCheckPage() {
         const data = await res.json();
         availableModels = data.models || [];
       }
-    } catch (err: any) {
-      modelFetchError = err.message;
+    } catch (err: unknown) {
+      modelFetchError = err instanceof Error ? err.message : "Erro desconhecido";
     }
 
     // 2. Testar chamada GenerateContent com o modelo selecionado (ou fallback pro primeiro disponível)
@@ -117,7 +117,7 @@ export default async function HealthCheckPage() {
             <div className="max-h-60 overflow-y-auto border rounded-lg bg-slate-50 p-4">
               {availableModels.length > 0 ? (
                 <ul className="space-y-2">
-                  {availableModels.map((m: any) => (
+                  {availableModels.map((m) => (
                     <li key={m.name} className="flex justify-between border-b border-slate-200 pb-2">
                       <strong className="font-mono text-sm text-blue-700">{m.name.replace('models/', '')}</strong>
                       <span className="text-xs text-slate-500">
