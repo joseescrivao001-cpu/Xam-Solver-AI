@@ -43,7 +43,15 @@ export default function DashboardPage() {
         body: formData,
       });
 
-      const data = await res.json();
+      let data;
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        console.error("Vercel Crash Response:", text);
+        throw new Error("O servidor da Vercel interrompeu a requisição (Provável Timeout de 10s da Vercel ou Imagem Pesada).");
+      }
 
       if (!res.ok) {
         throw new Error(data.error || "Ocorreu um erro desconhecido.");
