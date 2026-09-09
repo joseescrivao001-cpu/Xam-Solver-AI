@@ -49,8 +49,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forneça uma imagem ou texto da questão." }, { status: 400 });
     }
 
+    const rawModel = process.env.GEMINI_MODEL;
+    const modelToUse = rawModel ? rawModel.trim() : "gemini-1.5-flash";
     const model = genAI.getGenerativeModel({
-      model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+      model: modelToUse,
       systemInstruction: SYSTEM_INSTRUCTION,
     });
 
