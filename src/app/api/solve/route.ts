@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, Part } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!);
 
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       systemInstruction: SYSTEM_INSTRUCTION,
     });
 
-    const promptParts: (string | { inlineData: { data: string; mimeType: string } })[] = [];
+    const promptParts: Part[] = [];
     
     let customPrompt = `O usuário selecionou o modo: MODO ${mode?.toUpperCase()}. \n\n`;
     if (mode === 'prova') customPrompt += "Siga rigorosamente as instruções deste modo: Seja extremamente direto, priorize dar a Resposta Final rapidamente antes das outras seções.\n";
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
     
     if (text) customPrompt += `\nTexto adicional da questão: ${text}`;
     
-    promptParts.push(customPrompt);
+    promptParts.push({ text: customPrompt });
 
     if (file) {
       // Validação MIME Type rigorosa
