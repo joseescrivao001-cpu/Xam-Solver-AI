@@ -1,4 +1,7 @@
-import { NextResponse } from "next/server";
+export const runtime = 'edge';
+export const maxDuration = 60; // 60 segundos permitidos no Hobby Vercel
+
+import { Buffer } from "node:buffer";
 import { createClient } from "@/lib/supabase/server";
 import { GoogleGenerativeAI, Part } from "@google/generative-ai";
 
@@ -23,15 +26,13 @@ Formate sua resposta EXATAMENTE com os seguintes cabeçalhos Markdown:
 
 Seja conciso no raciocínio e OBRIGATÓRIO entregar a RESPOSTA FINAL no formato [LETRA] - [TEXTO]. Se você não entregar a resposta final, a tarefa será considerada FALHA.`;
 
-export const maxDuration = 60; // Permite que a API rode por até 60 segundos (Plano Hobby Vercel)
-
 export async function POST(req: Request) {
   try {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: "Não autorizado. Faça login para continuar." }, { status: 401 });
+      return new Response(JSON.stringify({ error: "Não autorizado." }), { status: 401, headers: { 'Content-Type': 'application/json' } });
     }
 
     const { data: profile } = await supabase
@@ -41,7 +42,7 @@ export async function POST(req: Request) {
       .single();
 
     if (!profile || profile.credits_balance < 1) {
-      return NextResponse.json({ error: "Créditos insuficientes. Adquira mais créditos para continuar." }, { status: 402 });
+      return new Response(JSON.stringify({ error: "Créditos insuficientes." }), { status: 402, headers: { 'Content-Type': 'application/json' } });
     }
 
     const formData = await req.formData();
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
     const file = formData.get("file") as File | null;
 
     if (!file && !text) {
-      return NextResponse.json({ error: "Forneça uma imagem ou texto da questão." }, { status: 400 });
+      return new Response(JSON.stringify({ error: "Forneça uma imagem ou texto." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
     const rawModel = process.env.GEMINI_MODEL;
@@ -62,22 +63,21 @@ export async function POST(req: Request) {
 
     const promptParts: Part[] = [];
     
-    let customPrompt = `O usuário selecionou o modo: MODO ${mode?.toUpperCase()}. \n\n`;
-    if (mode === 'prova') customPrompt += "Siga rigorosamente as instruções deste modo: Seja extremamente direto, priorize dar a Resposta Final rapidamente antes das outras seções.\n";
-    if (mode === 'estudo') customPrompt += "Siga rigorosamente as instruções deste modo: Seja muito didático na Explicação, ensinando o conceito como se fosse um professor particular.\n";
-    if (mode === 'dificil') customPrompt += "Siga rigorosamente as instruções deste modo: Analise profundamente todas as entrelinhas, pegadinhas e exceções antes de responder. Faça deduções avançadas.\n";
+    let customPrompt = `MODO: ${mode?.toUpperCase()}. \n`;
+    if (mode === 'prova') customPrompt += "Seja extremamente direto na Resposta Final.\n";
+    if (mode === 'estudo') customPrompt += "Seja muito didático na Explicação.\n";
+    if (mode === 'dificil') customPrompt += "Analise profundamente todas as entrelinhas e pegadinhas.\n";
     
     if (text) customPrompt += `\nTexto adicional da questão: ${text}`;
-    
     promptParts.push({ text: customPrompt });
 
     if (file) {
-      // Validação MIME Type rigorosa
       const validMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
       if (!validMimeTypes.includes(file.type)) {
-        return NextResponse.json({ error: "Formato de imagem inválido. Use JPG, PNG ou WEBP." }, { status: 400 });
+        return new Response(JSON.stringify({ error: "Formato inválido. Use JPG, PNG ou WEBP." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
       }
 
+      // Uso do Node Buffer polyfill nativo do Edge Next.js (MUITO mais rápido que loop JS)
       const buffer = Buffer.from(await file.arrayBuffer());
       promptParts.push({
         inlineData: {
@@ -87,48 +87,65 @@ export async function POST(req: Request) {
       });
     }
 
-    const result = await model.generateContent({
+    const result = await model.generateContentStream({
       contents: [{ role: "user", parts: promptParts }],
       generationConfig: {
-        temperature: 0.1, // Temperatura baixa (precisão)
+        temperature: 0.1, 
         maxOutputTokens: 8192,
       },
     });
 
-    const responseText = result.response.text();
+    const stream = new ReadableStream({
+      async start(controller) {
+        let fullText = "";
+        try {
+          for await (const chunk of result.stream) {
+            const chunkText = chunk.text();
+            fullText += chunkText;
+            controller.enqueue(new TextEncoder().encode(chunkText));
+          }
 
-    if (!responseText.includes('Resposta') && !responseText.includes('Resposta:')) {
-      throw new Error("A IA falhou em entregar a Resposta Final estruturada. Crédito não deduzido.");
-    }
+          // Validação final de formato
+          if (!fullText.includes('Resposta') && !fullText.includes('Resposta:')) {
+            controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: A IA falhou em formatar a Resposta Final. Crédito NÃO deduzido.**"));
+            controller.close();
+            return;
+          }
 
-    // Salvar registro ANTES de cobrar, garantindo a integridade
-    const { error: insertError } = await supabase.from("exams").insert({
-      user_id: user.id,
-      question_text: text || "Imagem enviada",
-      mode: mode || "estudo",
-      answer_json: { response: responseText }
+          // Salvar histórico e deduzir crédito SOMENTE se tudo deu certo
+          const { error: insertError } = await supabase.from("exams").insert({
+            user_id: user.id,
+            question_text: text || "Imagem enviada",
+            mode: mode || "estudo",
+            answer_json: { response: fullText }
+          });
+
+          if (!insertError) {
+            await supabase
+              .from("profiles")
+              .update({ credits_balance: profile.credits_balance - 1 })
+              .eq("id", user.id);
+          } else {
+             console.error("Erro ao inserir no Supabase:", insertError);
+          }
+
+          controller.close();
+        } catch (err) {
+          console.error("Stream generation error:", err);
+          controller.error(err);
+        }
+      }
     });
 
-    if (insertError) {
-      console.error("Erro ao salvar histórico do exam:", insertError);
-      throw new Error("Erro de banco de dados ao salvar a resolução.");
-    }
-
-    // Deduzir 1 crédito (APENAS se chegou aqui ileso)
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({ credits_balance: profile.credits_balance - 1 })
-      .eq("id", user.id);
-      
-    if (updateError) {
-      console.error("Erro ao deduzir crédito:", updateError);
-      throw new Error("Erro de banco de dados ao atualizar créditos.");
-    }
-
-    return NextResponse.json({ response: responseText });
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Transfer-Encoding': 'chunked'
+      }
+    });
   } catch (error: unknown) {
     console.error("Solver API Error:", error);
     const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
-    return NextResponse.json({ error: "Erro interno no servidor: " + errorMessage }, { status: 500 });
+    return new Response(JSON.stringify({ error: errorMessage }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
 }
