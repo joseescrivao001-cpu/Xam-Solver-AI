@@ -78,10 +78,6 @@ export default function DashboardPage() {
         }
       }
       
-      if (typeof window !== "undefined") {
-        setTimeout(() => window.location.reload(), 3000);
-      }
-      
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ocorreu um erro inesperado.");
     } finally {

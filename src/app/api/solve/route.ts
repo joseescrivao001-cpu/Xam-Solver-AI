@@ -135,7 +135,9 @@ export async function POST(req: Request) {
           controller.close();
         } catch (err) {
           console.error("Stream generation error:", err);
-          controller.error(err);
+          const errorMsg = err instanceof Error ? err.message : "Erro desconhecido na IA.";
+          controller.enqueue(new TextEncoder().encode(`\n\n**[FALHA NA INTELIGÊNCIA ARTIFICIAL]:** ${errorMsg}\n\n*Nenhum crédito foi cobrado.*`));
+          controller.close();
         }
       }
     });
