@@ -42,8 +42,8 @@ export default function LoginPage() {
           type: "success",
         });
       }
-    } catch (error: any) {
-      setMessage({ text: error.message || "Ocorreu um erro.", type: "error" });
+    } catch (error) {
+      setMessage({ text: error instanceof Error ? error.message : "Ocorreu um erro.", type: "error" });
     } finally {
       setIsLoading(false);
     }
@@ -59,8 +59,8 @@ export default function LoginPage() {
         },
       });
       if (error) throw error;
-    } catch (error: any) {
-      setMessage({ text: error.message, type: "error" });
+    } catch (error) {
+      setMessage({ text: error instanceof Error ? error.message : "Ocorreu um erro.", type: "error" });
       setIsLoading(false);
     }
   };
