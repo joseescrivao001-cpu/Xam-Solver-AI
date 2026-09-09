@@ -1,5 +1,4 @@
-export const maxDuration = 60; // 60 segundos (Plano Hobby Vercel suporta até 60s em Node)
-export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
 
 import { Buffer } from "node:buffer";
 import { createClient } from "@/lib/supabase/server";
@@ -54,13 +53,6 @@ export async function POST(req: Request) {
       return new Response(JSON.stringify({ error: "Forneça uma imagem ou texto." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
-    const rawModel = process.env.GEMINI_MODEL;
-    const modelToUse = rawModel ? rawModel.trim() : "gemini-3.6-flash";
-    const model = genAI.getGenerativeModel({
-      model: modelToUse,
-      systemInstruction: SYSTEM_INSTRUCTION,
-    });
-
     const promptParts: Part[] = [];
     
     let customPrompt = `MODO: ${mode?.toUpperCase()}. \n`;
@@ -89,56 +81,100 @@ export async function POST(req: Request) {
     const stream = new ReadableStream({
       async start(controller) {
         // Envia um espaço invisível IMEDIATAMENTE para forçar o Vercel a reconhecer o TTFB (Time To First Byte)
-        // Isso burla o limite rigoroso de timeout inicial da Vercel para requests pesados
         controller.enqueue(new TextEncoder().encode(" "));
 
-        let fullText = "";
-        try {
-          const result = await model.generateContentStream({
-            contents: [{ role: "user", parts: promptParts }],
-            generationConfig: {
-              temperature: 0.1, 
-              maxOutputTokens: 8192,
-            },
-          });
-
-          for await (const chunk of result.stream) {
-            const chunkText = chunk.text();
-            fullText += chunkText;
-            controller.enqueue(new TextEncoder().encode(chunkText));
-          }
-
-          // Validação final de formato
-          if (!fullText.includes('Resposta') && !fullText.includes('Resposta:')) {
-            controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: A IA falhou em formatar a Resposta Final. Crédito NÃO deduzido.**"));
-            controller.close();
-            return;
-          }
-
-          // Salvar histórico e deduzir crédito SOMENTE se tudo deu certo
-          const { error: insertError } = await supabase.from("exams").insert({
-            user_id: user.id,
-            question_text: text || "Imagem enviada",
-            mode: mode || "estudo",
-            answer_json: { response: fullText }
-          });
-
-          if (!insertError) {
-            await supabase
-              .from("profiles")
-              .update({ credits_balance: profile.credits_balance - 1 })
-              .eq("id", user.id);
-          } else {
-             console.error("Erro ao inserir no Supabase:", insertError);
-          }
-
-          controller.close();
-        } catch (err) {
-          console.error("Stream generation error:", err);
-          const errorMsg = err instanceof Error ? err.message : "Erro desconhecido na IA.";
-          controller.enqueue(new TextEncoder().encode(`\n\n**[FALHA NA INTELIGÊNCIA ARTIFICIAL]:** ${errorMsg}\n\n*Nenhum crédito foi cobrado.*`));
-          controller.close();
+        const modelsToTry: string[] = [];
+        if (process.env.GEMINI_MODEL) {
+          modelsToTry.push(process.env.GEMINI_MODEL.trim());
         }
+        modelsToTry.push("gemini-1.5-pro-latest", "gemini-1.5-flash", "gemini-pro");
+        
+        // Remove duplicates maintaining order
+        const uniqueModels = Array.from(new Set(modelsToTry));
+
+        let success = false;
+        let finalResponseText = "";
+        let lastErrorMsg = "";
+
+        for (const modelName of uniqueModels) {
+          const model = genAI.getGenerativeModel({
+            model: modelName,
+            systemInstruction: SYSTEM_INSTRUCTION,
+          });
+
+          let attempts = 0;
+
+          while (attempts < 3) {
+            try {
+              attempts++;
+              const result = await model.generateContentStream({
+                contents: [{ role: "user", parts: promptParts }],
+                generationConfig: {
+                  temperature: 0.1, 
+                  maxOutputTokens: 8192,
+                },
+              });
+
+              for await (const chunk of result.stream) {
+                const chunkText = chunk.text();
+                finalResponseText += chunkText;
+                controller.enqueue(new TextEncoder().encode(chunkText));
+              }
+
+              success = true;
+              break; // Sai do loop de tentativas se foi bem sucedido
+            } catch (err: any) {
+              const errMsg = err.message || String(err);
+              lastErrorMsg = errMsg;
+              
+              if (errMsg.includes("503") || errMsg.includes("429")) {
+                if (attempts < 3) {
+                  // Aguarda 2 segundos antes de tentar novamente (Retry Logic)
+                  await new Promise(resolve => setTimeout(resolve, 2000));
+                  continue; // Tenta o MESMO modelo novamente
+                }
+              }
+              // Se foi 404, erro de permissão ou esgotou tentativas, sai do loop de tentativas para testar o PRÓXIMO modelo
+              break;
+            }
+          }
+
+          if (success) {
+            break; // Sai do loop de modelos se resolveu com sucesso
+          }
+        }
+
+        if (!success) {
+          controller.enqueue(new TextEncoder().encode(`\n\n**[FALHA NA INTELIGÊNCIA ARTIFICIAL]:** Esgotamos todas as tentativas e lista de modelos de fallback. Último erro recebido: ${lastErrorMsg}\n\n*Nenhum crédito foi cobrado.*`));
+          controller.close();
+          return;
+        }
+
+        // Validação Final: Verifica se cumpriu as ordens
+        if (!finalResponseText.includes('Resposta') && !finalResponseText.includes('Resposta:')) {
+          controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: A IA falhou em formatar a Resposta Final. Crédito NÃO deduzido.**"));
+          controller.close();
+          return;
+        }
+
+        // Cobrança e Histórico SOMENTE APÓS TODAS as etapas terem sucesso
+        const { error: insertError } = await supabase.from("exams").insert({
+          user_id: user.id,
+          question_text: text || "Imagem enviada",
+          mode: mode || "estudo",
+          answer_json: { response: finalResponseText }
+        });
+
+        if (!insertError) {
+          await supabase
+            .from("profiles")
+            .update({ credits_balance: profile.credits_balance - 1 })
+            .eq("id", user.id);
+        } else {
+           console.error("Erro ao inserir no Supabase:", insertError);
+        }
+
+        controller.close();
       }
     });
 
