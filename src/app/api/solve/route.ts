@@ -85,10 +85,13 @@ export async function POST(req: Request) {
 
         try {
           const modelToUse = 'gemini-1.5-flash';
-          const model = genAI.getGenerativeModel({
-            model: modelToUse,
-            systemInstruction: SYSTEM_INSTRUCTION,
-          });
+          const model = genAI.getGenerativeModel(
+            {
+              model: modelToUse,
+              systemInstruction: SYSTEM_INSTRUCTION,
+            },
+            { apiVersion: 'v1' } // Força a SDK a usar a API v1 estável em vez da v1beta
+          );
 
           const result = await model.generateContentStream({
             contents: [{ role: "user", parts: promptParts }],
