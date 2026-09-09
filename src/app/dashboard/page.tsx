@@ -16,6 +16,7 @@ export default function DashboardPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [questionText, setQuestionText] = useState("");
   const [isSolving, setIsSolving] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [response, setResponse] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,32 +44,48 @@ export default function DashboardPage() {
         body: formData,
       });
 
-      let data;
-      const contentType = res.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        console.error("Vercel Crash Response:", text);
-        throw new Error("O servidor da Vercel interrompeu a requisição (Provável Timeout de 10s da Vercel ou Imagem Pesada).");
-      }
-
       if (!res.ok) {
-        throw new Error(data.error || "Ocorreu um erro desconhecido.");
+        let errText = "Erro na resposta do servidor.";
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const errData = await res.json();
+          errText = errData.error || errText;
+        } else {
+          errText = await res.text();
+        }
+        throw new Error(errText || "Ocorreu um erro na conexão (Timeout ou Falha no Edge).");
       }
 
-      setResponse(data.response);
+      setIsSolving(false);
+      setIsStreaming(true);
+      setResponse("");
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("Erro ao iniciar o stream.");
+
+      const decoder = new TextDecoder();
+      let streamedData = "";
+      let done = false;
+
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        if (value) {
+          streamedData += decoder.decode(value, { stream: true });
+          setResponse(streamedData);
+        }
+      }
       
-      // Atualiza a página para refletir o saldo de créditos no layout
-      // Na vida real, poderíamos usar um React Context para atualizar o saldo sem reload
+      // Quando o stream acaba, recarrega para atualizar os créditos
       if (typeof window !== "undefined") {
-        setTimeout(() => window.location.reload(), 3000); // Reload sutil após 3s para o crédito descer
+        setTimeout(() => window.location.reload(), 3000);
       }
       
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ocorreu um erro");
+      setError(err instanceof Error ? err.message : "Ocorreu um erro inesperado.");
     } finally {
       setIsSolving(false);
+      setIsStreaming(false);
     }
   };
 
@@ -142,12 +159,17 @@ export default function DashboardPage() {
               className="w-full" 
               size="lg" 
               onClick={handleSolve}
-              disabled={isSolving || (!imageFile && !questionText)}
+              disabled={isSolving || isStreaming || (!imageFile && !questionText)}
             >
               {isSolving ? (
                 <>
                   <BrainCircuit className="mr-2 h-5 w-5 animate-pulse" />
                   Raciocinando...
+                </>
+              ) : isStreaming ? (
+                <>
+                  <BrainCircuit className="mr-2 h-5 w-5 text-green-500 animate-pulse" />
+                  Escrevendo a Resposta...
                 </>
               ) : (
                 "Resolver Agora (Custa 1 Crédito)"
@@ -177,7 +199,7 @@ export default function DashboardPage() {
                 <BrainCircuit className="h-10 w-10 animate-pulse text-primary" />
                 <p>O Especialista está analisando a questão...</p>
               </div>
-            ) : response ? (
+            ) : response !== null ? (
               <div className="prose prose-sm dark:prose-invert max-w-none pb-8">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {response}
