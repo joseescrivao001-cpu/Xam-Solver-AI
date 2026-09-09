@@ -85,7 +85,7 @@ export default function DashboardPage() {
 
             <div className="space-y-2">
               <Label>Modo do Especialista</Label>
-              <Select value={mode} onValueChange={setMode}>
+              <Select value={mode} onValueChange={(val) => setMode(val || "estudo")}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o modo" />
                 </SelectTrigger>
