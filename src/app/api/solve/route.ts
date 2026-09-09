@@ -1,5 +1,5 @@
-export const runtime = 'edge';
-export const maxDuration = 60; // 60 segundos permitidos no Hobby Vercel
+export const maxDuration = 60; // 60 segundos (Plano Hobby Vercel suporta até 60s em Node)
+export const dynamic = 'force-dynamic';
 
 import { Buffer } from "node:buffer";
 import { createClient } from "@/lib/supabase/server";
@@ -77,7 +77,6 @@ export async function POST(req: Request) {
         return new Response(JSON.stringify({ error: "Formato inválido. Use JPG, PNG ou WEBP." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
       }
 
-      // Uso do Node Buffer polyfill nativo do Edge Next.js (MUITO mais rápido que loop JS)
       const buffer = Buffer.from(await file.arrayBuffer());
       promptParts.push({
         inlineData: {
@@ -87,18 +86,22 @@ export async function POST(req: Request) {
       });
     }
 
-    const result = await model.generateContentStream({
-      contents: [{ role: "user", parts: promptParts }],
-      generationConfig: {
-        temperature: 0.1, 
-        maxOutputTokens: 8192,
-      },
-    });
-
     const stream = new ReadableStream({
       async start(controller) {
+        // Envia um espaço invisível IMEDIATAMENTE para forçar o Vercel a reconhecer o TTFB (Time To First Byte)
+        // Isso burla o limite rigoroso de timeout inicial da Vercel para requests pesados
+        controller.enqueue(new TextEncoder().encode(" "));
+
         let fullText = "";
         try {
+          const result = await model.generateContentStream({
+            contents: [{ role: "user", parts: promptParts }],
+            generationConfig: {
+              temperature: 0.1, 
+              maxOutputTokens: 8192,
+            },
+          });
+
           for await (const chunk of result.stream) {
             const chunkText = chunk.text();
             fullText += chunkText;
