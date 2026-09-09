@@ -123,8 +123,8 @@ export async function POST(req: Request) {
 
               success = true;
               break; // Sai do loop de tentativas se foi bem sucedido
-            } catch (err: any) {
-              const errMsg = err.message || String(err);
+            } catch (err) {
+              const errMsg = err instanceof Error ? err.message : String(err);
               lastErrorMsg = errMsg;
               
               if (errMsg.includes("503") || errMsg.includes("429")) {
