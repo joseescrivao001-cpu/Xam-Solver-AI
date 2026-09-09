@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { CheckCircle, XCircle } from "lucide-react";
 
-export const dynamic = "force-dynamic"; // Garante que a página não seja cacheada e leia as variáveis em tempo real
+export const dynamic = "force-dynamic";
 
 export default async function HealthCheckPage() {
   const envVars = [
@@ -11,20 +11,53 @@ export default async function HealthCheckPage() {
     { name: "GOOGLE_GEMINI_API_KEY", value: process.env.GOOGLE_GEMINI_API_KEY },
   ];
 
-  const modelEnv = process.env.GEMINI_MODEL;
-  const isModelOk = modelEnv === "gemini-1.5-flash" || modelEnv === "gemini-1.5-pro-latest";
+  const rawModel = process.env.GEMINI_MODEL;
+  const modelEnv = rawModel ? rawModel.trim() : "";
+  const isModelOk = modelEnv === "gemini-1.5-flash" || modelEnv === "gemini-1.5-pro-latest" || modelEnv === "gemini-pro";
 
   let geminiTestStatus = "Não testado";
   let geminiTestError = null;
+  let availableModels: any[] = [];
+  let modelFetchError = null;
 
   if (process.env.GOOGLE_GEMINI_API_KEY) {
+    const apiKey = process.env.GOOGLE_GEMINI_API_KEY.trim();
+    
+    // 1. Listar Modelos disponíveis para esta chave via REST API
     try {
-      const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY);
-      const modelToUse = modelEnv || "gemini-1.5-pro-latest";
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+      if (!res.ok) {
+        modelFetchError = `Erro na API HTTP: ${res.status} - ${res.statusText}`;
+      } else {
+        const data = await res.json();
+        availableModels = data.models || [];
+      }
+    } catch (err: any) {
+      modelFetchError = err.message;
+    }
+
+    // 2. Testar chamada GenerateContent com o modelo selecionado (ou fallback pro primeiro disponível)
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      
+      // Auto-fallback: se o modelo do env não existir na lista, pega o primeiro que suporte generateContent
+      let modelToUse = modelEnv || "gemini-1.5-pro-latest";
+      
+      if (availableModels.length > 0) {
+        const modelNames = availableModels.map(m => m.name.replace('models/', ''));
+        if (!modelNames.includes(modelToUse)) {
+          // Achar o primeiro modelo suportado útil (gemini-1.5-flash, gemini-1.5-pro, gemini-pro)
+          const fallback = availableModels.find(m => m.supportedGenerationMethods.includes("generateContent") && m.name.includes("gemini"));
+          if (fallback) {
+            modelToUse = fallback.name.replace('models/', '');
+          }
+        }
+      }
+
       const model = genAI.getGenerativeModel({ model: modelToUse });
       
       const result = await model.generateContent("Responda exatamente com a palavra: OK");
-      geminiTestStatus = result.response.text();
+      geminiTestStatus = `Sucesso usando o modelo: ${modelToUse}. Resposta: ${result.response.text()}`;
     } catch (error: unknown) {
       geminiTestStatus = "Falhou";
       geminiTestError = error instanceof Error ? error.message : "Erro desconhecido";
@@ -35,10 +68,10 @@ export default async function HealthCheckPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 p-8 text-slate-900 font-sans">
-      <div className="mx-auto max-w-3xl space-y-8">
+      <div className="mx-auto max-w-4xl space-y-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Diagnóstico do Sistema</h1>
-          <p className="text-slate-500 mt-2">Visão geral das chaves de API e integrações.</p>
+          <p className="text-slate-500 mt-2">Visão geral das chaves de API, integrações e Modelos Habilitados.</p>
         </div>
 
         {/* Bloco 1: Variáveis de Ambiente */}
@@ -60,7 +93,6 @@ export default async function HealthCheckPage() {
               </li>
             ))}
             
-            {/* GEMINI_MODEL Especial */}
             <li className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border">
               <span className="font-mono text-sm font-medium">GEMINI_MODEL</span>
               {isModelOk ? (
@@ -69,16 +101,41 @@ export default async function HealthCheckPage() {
                 </span>
               ) : (
                 <span className="flex items-center text-red-600 font-bold text-sm bg-red-100 px-3 py-1 rounded-full">
-                  <XCircle className="w-4 h-4 mr-1" /> ERRADO ({modelEnv || "Vazio"})
+                  <XCircle className="w-4 h-4 mr-1" /> AVISO ({modelEnv || "Vazio"})
                 </span>
               )}
             </li>
           </ul>
         </div>
 
-        {/* Bloco 2: Teste da API do Gemini */}
+        {/* Bloco 2: Modelos Permitidos pela API Key */}
         <div className="rounded-xl border bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold mb-4 border-b pb-2">2. Teste de Resposta (Gemini API)</h2>
+          <h2 className="text-lg font-semibold mb-4 border-b pb-2">2. Modelos Habilitados para sua Chave</h2>
+          {modelFetchError ? (
+            <div className="bg-red-50 text-red-800 p-4 rounded-lg font-mono text-sm">{modelFetchError}</div>
+          ) : (
+            <div className="max-h-60 overflow-y-auto border rounded-lg bg-slate-50 p-4">
+              {availableModels.length > 0 ? (
+                <ul className="space-y-2">
+                  {availableModels.map((m: any) => (
+                    <li key={m.name} className="flex justify-between border-b border-slate-200 pb-2">
+                      <strong className="font-mono text-sm text-blue-700">{m.name.replace('models/', '')}</strong>
+                      <span className="text-xs text-slate-500">
+                        {m.supportedGenerationMethods?.includes("generateContent") ? "✅ generateContent" : "❌ s/ suporte"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-slate-500">Nenhum modelo encontrado.</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Bloco 3: Teste da API do Gemini */}
+        <div className="rounded-xl border bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold mb-4 border-b pb-2">3. Teste de Resposta (Gemini API)</h2>
           
           <div className="space-y-4">
             <div className="flex items-center justify-between p-3 rounded-lg border bg-slate-50">
