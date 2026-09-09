@@ -84,13 +84,13 @@ export async function POST(req: Request) {
         controller.enqueue(new TextEncoder().encode(" "));
 
         try {
-          const modelToUse = 'gemini-1.5-flash';
+          const modelToUse = 'gemini-3.6-flash';
           const model = genAI.getGenerativeModel(
             {
               model: modelToUse,
               systemInstruction: SYSTEM_INSTRUCTION,
             },
-            { apiVersion: 'v1' } // Força a SDK a usar a API v1 estável em vez da v1beta
+            { apiVersion: 'v1beta' } // Forçado para v1beta conforme a ordem
           );
 
           const result = await model.generateContentStream({
