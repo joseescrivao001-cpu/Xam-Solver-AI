@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     }
 
     const rawModel = process.env.GEMINI_MODEL;
-    const modelToUse = rawModel ? rawModel.trim() : "gemini-1.5-flash";
+    const modelToUse = rawModel ? rawModel.trim() : "gemini-3.6-flash";
     const model = genAI.getGenerativeModel({
       model: modelToUse,
       systemInstruction: SYSTEM_INSTRUCTION,

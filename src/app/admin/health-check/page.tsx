@@ -36,24 +36,10 @@ export default async function HealthCheckPage() {
       modelFetchError = err instanceof Error ? err.message : "Erro desconhecido";
     }
 
-    // 2. Testar chamada GenerateContent com o modelo selecionado (ou fallback pro primeiro disponível)
+    // 2. Testar chamada GenerateContent com o modelo selecionado
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
-      
-      // Auto-fallback: se o modelo do env não existir na lista, pega o primeiro que suporte generateContent
-      let modelToUse = modelEnv || "gemini-1.5-pro-latest";
-      
-      if (availableModels.length > 0) {
-        const modelNames = availableModels.map(m => m.name.replace('models/', ''));
-        if (!modelNames.includes(modelToUse)) {
-          // Achar o primeiro modelo suportado útil (gemini-1.5-flash, gemini-1.5-pro, gemini-pro)
-          const fallback = availableModels.find(m => m.supportedGenerationMethods.includes("generateContent") && m.name.includes("gemini"));
-          if (fallback) {
-            modelToUse = fallback.name.replace('models/', '');
-          }
-        }
-      }
-
+      const modelToUse = modelEnv || "gemini-3.6-flash";
       const model = genAI.getGenerativeModel({ model: modelToUse });
       
       const result = await model.generateContent("Responda exatamente com a palavra: OK");
