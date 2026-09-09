@@ -7,13 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { UploadCloud, BrainCircuit } from "lucide-react";
+import { UploadCloud, BrainCircuit, AlertCircle } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export default function DashboardPage() {
   const [mode, setMode] = useState("estudo");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [questionText, setQuestionText] = useState("");
   const [isSolving, setIsSolving] = useState(false);
+  const [response, setResponse] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -23,12 +27,41 @@ export default function DashboardPage() {
 
   const handleSolve = async () => {
     if (!imageFile && !questionText) return;
+    
     setIsSolving(true);
-    // Aqui virá a lógica de Upload para Supabase e chamada da API do Gemini (Fase 3)
-    setTimeout(() => {
+    setError(null);
+    setResponse(null);
+
+    const formData = new FormData();
+    formData.append("mode", mode);
+    if (questionText) formData.append("text", questionText);
+    if (imageFile) formData.append("file", imageFile);
+
+    try {
+      const res = await fetch("/api/solve", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Ocorreu um erro desconhecido.");
+      }
+
+      setResponse(data.response);
+      
+      // Atualiza a página para refletir o saldo de créditos no layout
+      // Na vida real, poderíamos usar um React Context para atualizar o saldo sem reload
+      if (typeof window !== "undefined") {
+        setTimeout(() => window.location.reload(), 3000); // Reload sutil após 3s para o crédito descer
+      }
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ocorreu um erro");
+    } finally {
       setIsSolving(false);
-      alert("Integração da API virá na próxima fase!");
-    }, 2000);
+    }
   };
 
   return (
@@ -60,7 +93,7 @@ export default function DashboardPage() {
                   <Input
                     id="dropzone-file"
                     type="file"
-                    accept="image/*"
+                    accept="image/png, image/jpeg, image/jpg, image/webp"
                     className="hidden"
                     onChange={handleFileChange}
                   />
@@ -106,12 +139,19 @@ export default function DashboardPage() {
               {isSolving ? (
                 <>
                   <BrainCircuit className="mr-2 h-5 w-5 animate-pulse" />
-                  Processando Raciocínio...
+                  Raciocinando...
                 </>
               ) : (
-                "Resolver Agora"
+                "Resolver Agora (Custa 1 Crédito)"
               )}
             </Button>
+            
+            {error && (
+              <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4" />
+                {error}
+              </div>
+            )}
 
           </CardContent>
         </Card>
@@ -123,8 +163,23 @@ export default function DashboardPage() {
             <CardTitle>Resposta da IA</CardTitle>
             <CardDescription>A solução aparecerá aqui estruturada.</CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col items-center justify-center h-[300px] text-muted-foreground text-sm">
-            Nenhuma questão resolvida ainda.
+          <CardContent className="h-full">
+            {isSolving ? (
+              <div className="flex h-[300px] flex-col items-center justify-center space-y-4 text-muted-foreground">
+                <BrainCircuit className="h-10 w-10 animate-pulse text-primary" />
+                <p>O Especialista está analisando a questão...</p>
+              </div>
+            ) : response ? (
+              <div className="prose prose-sm dark:prose-invert max-w-none pb-8">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {response}
+                </ReactMarkdown>
+              </div>
+            ) : (
+              <div className="flex h-[300px] flex-col items-center justify-center text-muted-foreground text-sm">
+                Nenhuma questão resolvida ainda.
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
