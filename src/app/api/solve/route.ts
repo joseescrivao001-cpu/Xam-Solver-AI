@@ -19,7 +19,11 @@ Formate sua resposta EXATAMENTE com os seguintes cabeçalhos Markdown:
 (A prova real ou por que as alternativas erradas estão incorretas)
 
 ### Nível de Confiança
-(Exemplo: 99%)`;
+(Exemplo: 99%)
+
+Seja conciso no raciocínio e OBRIGATÓRIO entregar a RESPOSTA FINAL no formato [LETRA] - [TEXTO]. Se você não entregar a resposta final, a tarefa será considerada FALHA.`;
+
+export const maxDuration = 60; // Permite que a API rode por até 60 segundos (Plano Hobby Vercel)
 
 export async function POST(req: Request) {
   try {
@@ -87,24 +91,39 @@ export async function POST(req: Request) {
       contents: [{ role: "user", parts: promptParts }],
       generationConfig: {
         temperature: 0.1, // Temperatura baixa (precisão)
+        maxOutputTokens: 8192,
       },
     });
 
     const responseText = result.response.text();
 
-    // Deduzir 1 crédito
-    await supabase
-      .from("profiles")
-      .update({ credits_balance: profile.credits_balance - 1 })
-      .eq("id", user.id);
+    if (!responseText.includes('Resposta') && !responseText.includes('Resposta:')) {
+      throw new Error("A IA falhou em entregar a Resposta Final estruturada. Crédito não deduzido.");
+    }
 
-    // Salvar registro (opcionalmente poderíamos fazer upload da imagem pro Supabase Storage aqui)
-    await supabase.from("exams").insert({
+    // Salvar registro ANTES de cobrar, garantindo a integridade
+    const { error: insertError } = await supabase.from("exams").insert({
       user_id: user.id,
       question_text: text || "Imagem enviada",
       mode: mode || "estudo",
       answer_json: { response: responseText }
     });
+
+    if (insertError) {
+      console.error("Erro ao salvar histórico do exam:", insertError);
+      throw new Error("Erro de banco de dados ao salvar a resolução.");
+    }
+
+    // Deduzir 1 crédito (APENAS se chegou aqui ileso)
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update({ credits_balance: profile.credits_balance - 1 })
+      .eq("id", user.id);
+      
+    if (updateError) {
+      console.error("Erro ao deduzir crédito:", updateError);
+      throw new Error("Erro de banco de dados ao atualizar créditos.");
+    }
 
     return NextResponse.json({ response: responseText });
   } catch (error: unknown) {
