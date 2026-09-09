@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Merriweather } from "next/font/google";
 import "./globals.css";
-import { cn } from "@/lib/utils";
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const merriweather = Merriweather({ 
+  weight: ["300", "400", "700"],
+  subsets: ["latin"], 
+  variable: "--font-merriweather" 
+});
 
 export const metadata: Metadata = {
-  title: "Exam Solver AI",
-  description: "Resolva questões de provas com Inteligência Artificial",
+  title: "Exam Solver AI - Lovable Edition",
+  description: "A inteligência artificial acadêmica mais avançada do mercado.",
 };
 
 export default function RootLayout({
@@ -16,8 +20,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" className={cn("font-sans", inter.variable)}>
-      <body className="antialiased min-h-screen bg-background">
+    <html lang="pt-BR" className="dark">
+      <body className={`${inter.variable} ${merriweather.variable} font-sans bg-zinc-950 text-zinc-50 min-h-screen selection:bg-indigo-500/30 selection:text-indigo-200`}>
         {children}
       </body>
     </html>
