@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export default function Home() {
   return (
@@ -12,12 +13,18 @@ export default function Home() {
           Envie fotos de questões difíceis e receba a resolução passo a passo em segundos, operando com protocolo rigoroso de zero alucinação.
         </p>
         <div className="flex items-center justify-center gap-4 pt-4">
-          <Button asChild size="lg" className="h-12 px-8 text-lg">
-            <Link href="/login">Testar Gratuitamente</Link>
-          </Button>
-          <Button asChild size="lg" variant="outline" className="h-12 px-8 text-lg">
-            <Link href="/dashboard">Ir para o Dashboard</Link>
-          </Button>
+          <Link 
+            href="/login" 
+            className={cn(buttonVariants({ size: "lg" }), "h-12 px-8 text-lg")}
+          >
+            Testar Gratuitamente
+          </Link>
+          <Link 
+            href="/dashboard" 
+            className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-12 px-8 text-lg")}
+          >
+            Ir para o Dashboard
+          </Link>
         </div>
       </div>
     </div>
