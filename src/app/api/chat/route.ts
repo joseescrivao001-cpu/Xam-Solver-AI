@@ -1,8 +1,16 @@
 export const runtime = 'edge';
 
-import { Buffer } from "node:buffer";
-import { createClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { GoogleGenerativeAI, Part, Content } from "@google/generative-ai";
+
+// Supabase client direto (sem cookies) para o Edge Runtime
+// Usamos a SERVICE_ROLE_KEY para bypass RLS no backend
+function createEdgeSupabase() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!);
 
@@ -25,19 +33,84 @@ Formate sua resposta EXATAMENTE com os seguintes cabeçalhos Markdown:
 
 Seja conciso no raciocínio e OBRIGATÓRIO entregar a RESPOSTA FINAL no formato [LETRA] - [TEXTO]. Se você não entregar a resposta final, a tarefa será considerada FALHA.`;
 
+// Helper: converte ArrayBuffer para Base64 sem depender de Node Buffer (compatível com Edge)
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
 export async function POST(req: Request) {
   try {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    // Extrair token do cookie de autenticação do Supabase
+    const cookieHeader = req.headers.get("cookie") || "";
+    const supabaseAdmin = createEdgeSupabase();
 
-    if (!user) {
-      return new Response(JSON.stringify({ error: "Não autorizado." }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    // Buscar tokens de sessão do cookie
+    // O Supabase SSR armazena tokens em cookies como sb-<ref>-auth-token
+    let userId: string | null = null;
+    
+    // Tentar extrair o access_token dos cookies
+    const cookies = cookieHeader.split(";").map(c => c.trim());
+    let accessToken: string | null = null;
+    for (const cookie of cookies) {
+      if (cookie.includes("auth-token")) {
+        // O cookie pode estar codificado como base64 chunk
+        const parts = cookie.split("=");
+        if (parts.length >= 2) {
+          accessToken = parts.slice(1).join("=");
+          break;
+        }
+      }
+    }
+    
+    // Usar service role para verificar o JWT e obter o user
+    if (accessToken) {
+      try {
+        const decoded = JSON.parse(decodeURIComponent(accessToken));
+        if (decoded && decoded.access_token) {
+          const { data: { user } } = await supabaseAdmin.auth.getUser(decoded.access_token);
+          if (user) userId = user.id;
+        }
+      } catch {
+        // O token pode estar em outro formato, tentar chunked cookies
+      }
+    }
+    
+    // Fallback: tentar pegar de chunks (sb-xxx-auth-token.0, .1, etc)
+    if (!userId) {
+      const chunks: string[] = [];
+      for (const cookie of cookies) {
+        if (cookie.includes("auth-token")) {
+          const eqIdx = cookie.indexOf("=");
+          if (eqIdx !== -1) chunks.push(cookie.substring(eqIdx + 1));
+        }
+      }
+      if (chunks.length > 0) {
+        try {
+          const full = chunks.join("");
+          const decoded = JSON.parse(decodeURIComponent(full));
+          if (decoded && decoded.access_token) {
+            const { data: { user } } = await supabaseAdmin.auth.getUser(decoded.access_token);
+            if (user) userId = user.id;
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
     }
 
-    const { data: profile } = await supabase
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "Não autorizado. Faça login novamente." }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    const { data: profile } = await supabaseAdmin
       .from("profiles")
       .select("credits_balance")
-      .eq("id", user.id)
+      .eq("id", userId)
       .single();
 
     if (!profile || profile.credits_balance < 1) {
@@ -57,25 +130,24 @@ export async function POST(req: Request) {
        return new Response(JSON.stringify({ error: "conversation_id não fornecido." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
-    // Salvar a mensagem do usuário no banco (antes de iniciar o stream para não atrasar)
+    // Salvar a mensagem do usuário no banco
     const userMessageContent = text || "Imagem enviada";
-    await supabase.from("messages").insert({
+    await supabaseAdmin.from("messages").insert({
       conversation_id: conversationId,
       role: 'user',
       content: userMessageContent
     });
 
-    // Buscar histórico do chat
-    const { data: historyData } = await supabase
+    // Buscar histórico do chat para contexto
+    const { data: historyData } = await supabaseAdmin
       .from("messages")
       .select("*")
       .eq("conversation_id", conversationId)
       .order("created_at", { ascending: true });
 
-    // Converter para formato do Gemini
+    // Converter para formato do Gemini (pular a última = prompt atual)
     let chatHistory: Content[] = [];
-    if (historyData) {
-       // Pular a última mensagem, pois ela será o prompt atual
+    if (historyData && historyData.length > 1) {
        const previousMsgs = historyData.slice(0, -1);
        chatHistory = previousMsgs.map(m => ({
           role: m.role === 'ai' ? 'model' : 'user',
@@ -92,10 +164,10 @@ export async function POST(req: Request) {
         return new Response(JSON.stringify({ error: "Formato inválido. Use JPG, PNG ou WEBP." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
       }
 
-      const buffer = Buffer.from(await file.arrayBuffer());
+      const base64Data = arrayBufferToBase64(await file.arrayBuffer());
       promptParts.push({
         inlineData: {
-          data: buffer.toString("base64"),
+          data: base64Data,
           mimeType: file.type,
         },
       });
@@ -103,19 +175,18 @@ export async function POST(req: Request) {
 
     const stream = new ReadableStream({
       async start(controller) {
+        // TTFB Hack: envia espaço invisível para resetar o timer da Vercel
         controller.enqueue(new TextEncoder().encode(" "));
 
         try {
-          const modelToUse = 'gemini-3.6-flash';
           const model = genAI.getGenerativeModel(
             {
-              model: modelToUse,
+              model: 'gemini-3.6-flash',
               systemInstruction: SYSTEM_INSTRUCTION,
             },
             { apiVersion: 'v1beta' }
           );
 
-          // Criar chat session se houver histórico, senão usar generateContentStream
           let result;
           if (chatHistory.length > 0) {
              const chat = model.startChat({
@@ -143,26 +214,26 @@ export async function POST(req: Request) {
             controller.enqueue(new TextEncoder().encode(chunkText));
           }
 
-          // Validação Final: Verifica se cumpriu as ordens apenas se for a primeira mensagem da prova
+          // Validação apenas na primeira mensagem (exigir "Resposta" no formato)
           if (chatHistory.length === 0 && !finalResponseText.includes('Resposta') && !finalResponseText.includes('Resposta:')) {
             controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: A IA falhou em formatar a Resposta Final. Crédito NÃO deduzido.**"));
             controller.close();
             return;
           }
 
-          // Salvar mensagem da IA
-          const { error: insertError } = await supabase.from("messages").insert({
+          // Salvar resposta da IA no banco
+          const { error: insertError } = await supabaseAdmin.from("messages").insert({
             conversation_id: conversationId,
             role: 'ai',
             content: finalResponseText
           });
 
-          // Debitar crédito sempre que uma resposta for gerada com sucesso
+          // Debitar crédito somente se salvou com sucesso
           if (!insertError) {
-            await supabase
+            await supabaseAdmin
               .from("profiles")
               .update({ credits_balance: profile.credits_balance - 1 })
-              .eq("id", user.id);
+              .eq("id", userId);
           } else {
              console.error("Erro ao inserir mensagem da IA no Supabase:", insertError);
           }

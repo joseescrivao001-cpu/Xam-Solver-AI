@@ -150,6 +150,10 @@ export default function EcosystemDashboard() {
         activeConvId = data.id;
         setConversations([data, ...conversations]);
         setCurrentConvId(activeConvId);
+      } else {
+        setError("Falha ao criar conversa. Verifique sua conexão.");
+        setIsStreaming(false);
+        return;
       }
     }
 
