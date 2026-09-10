@@ -123,7 +123,15 @@ export default function ExamSolverGrand() {
           .not("image_url", "is", null)
           .order("created_at", { ascending: false });
         
-        if (data) setGalleryImages(data as GalleryImage[]);
+        if (data) {
+          const mapped = data.map(item => ({
+            id: item.id,
+            url: item.image_url,
+            created_at: item.created_at,
+            conversation_id: item.conversation_id
+          }));
+          setGalleryImages(mapped as GalleryImage[]);
+        }
       };
       fetchImages();
     }
