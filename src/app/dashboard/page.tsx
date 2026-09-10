@@ -13,6 +13,9 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 
@@ -424,7 +427,10 @@ export default function EcosystemDashboard() {
                       </div>
                     ) : (
                       <div className={`prose prose-invert prose-sm max-w-none ${msg.role === 'ai' ? 'font-serif leading-relaxed text-zinc-300' : 'font-sans text-zinc-200'}`}>
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        <ReactMarkdown 
+                          remarkPlugins={[remarkGfm, remarkMath]} 
+                          rehypePlugins={[rehypeKatex]}
+                        >
                           {msg.content}
                         </ReactMarkdown>
                       </div>
