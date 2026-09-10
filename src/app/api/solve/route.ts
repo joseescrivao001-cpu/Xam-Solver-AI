@@ -84,24 +84,41 @@ export async function POST(req: Request) {
         controller.enqueue(new TextEncoder().encode(" "));
 
         try {
-          const modelToUse = 'gemini-3.6-flash';
-          const model = genAI.getGenerativeModel(
-            {
-              model: modelToUse,
-              systemInstruction: SYSTEM_INSTRUCTION,
-            },
-            { apiVersion: 'v1beta' } // Forçado para v1beta conforme a ordem
-          );
-
-          const result = await model.generateContentStream({
-            contents: [{ role: "user", parts: promptParts }],
-            generationConfig: {
-              temperature: 0.1, 
-              maxOutputTokens: 8192,
-            },
-          });
-
+          const modelsToTry = ['gemini-3.6-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let result: any;
           let finalResponseText = "";
+          
+          for (const modelName of modelsToTry) {
+            try {
+              const model = genAI.getGenerativeModel(
+                {
+                  model: modelName,
+                  systemInstruction: SYSTEM_INSTRUCTION,
+                },
+                { apiVersion: 'v1beta' }
+              );
+
+              result = await model.generateContentStream({
+                contents: [{ role: "user", parts: promptParts }],
+                generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
+              });
+              break; // Sucesso
+            } catch (err: unknown) {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              if (errMsg.includes('429') || errMsg.includes('Too Many Requests') || errMsg.includes('quota') || errMsg.includes('exhausted')) {
+                console.log(`[Rodízio] ${modelName} falhou com 429, tentando o próximo...`);
+                continue;
+              }
+              throw err;
+            }
+          }
+
+          if (!result) {
+            controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: Nossos servidores de IA estão com alta demanda. Por favor, aguarde alguns segundos e tente novamente.**\n\n*Nenhum crédito foi cobrado.*"));
+            controller.close();
+            return;
+          }
           for await (const chunk of result.stream) {
             const chunkText = chunk.text();
             finalResponseText += chunkText;
