@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { 
   Plus, MessageSquare, Book, Image as ImageIcon, 
   Send, BrainCircuit, AlertCircle, CheckCircle2, 
-  LogOut, Coins, Menu, X
+  LogOut, Coins, Menu, X, Trash2, Edit2, Settings, Check
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -48,6 +48,10 @@ export default function EcosystemDashboard() {
   const [credits, setCredits] = useState<number>(0);
   const [user, setUser] = useState<{ id: string } | null>(null);
   
+  // Edit State
+  const [editingConvId, setEditingConvId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+
   // Input State
   const [inputText, setInputText] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -113,6 +117,30 @@ export default function EcosystemDashboard() {
       setConversations([data, ...conversations]);
       setCurrentConvId(data.id);
       setMessages([]);
+    }
+  };
+
+  const handleRenameConversation = async (id: string) => {
+    if (!editTitle.trim()) {
+      setEditingConvId(null);
+      return;
+    }
+    const { error } = await supabase.from("conversations").update({ title: editTitle }).eq("id", id);
+    if (!error) {
+      setConversations(prev => prev.map(c => c.id === id ? { ...c, title: editTitle } : c));
+    }
+    setEditingConvId(null);
+  };
+
+  const handleDeleteConversation = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const { error } = await supabase.from("conversations").delete().eq("id", id);
+    if (!error) {
+      setConversations(prev => prev.filter(c => c.id !== id));
+      if (currentConvId === id) {
+        setCurrentConvId(null);
+        setMessages([]);
+      }
     }
   };
 
@@ -287,14 +315,51 @@ export default function EcosystemDashboard() {
                 </p>
                 <div className="space-y-1">
                   {conversations.map(conv => (
-                    <button 
-                      key={conv.id}
-                      onClick={() => loadConversation(conv.id)}
-                      className={`w-full text-left px-2 py-2 rounded-lg text-sm transition truncate flex items-center gap-2 ${currentConvId === conv.id ? 'bg-zinc-800/80 text-zinc-100' : 'text-zinc-400 hover:bg-zinc-900/50 hover:text-zinc-200'}`}
-                    >
-                      <MessageSquare className="w-4 h-4 opacity-50 shrink-0" />
-                      <span className="truncate">{conv.title}</span>
-                    </button>
+                    <div key={conv.id} className="relative group">
+                      {editingConvId === conv.id ? (
+                        <div className="flex items-center gap-2 w-full px-2 py-1.5 bg-zinc-900 rounded-lg">
+                          <input 
+                            autoFocus
+                            value={editTitle}
+                            onChange={e => setEditTitle(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleRenameConversation(conv.id)}
+                            className="bg-transparent text-sm text-zinc-100 flex-1 outline-none min-w-0"
+                          />
+                          <button onClick={() => handleRenameConversation(conv.id)} className="text-emerald-400 hover:text-emerald-300">
+                            <Check className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button 
+                          onClick={() => loadConversation(conv.id)}
+                          className={`w-full text-left px-2 py-2 rounded-lg text-sm transition flex items-center justify-between ${currentConvId === conv.id ? 'bg-zinc-800/80 text-zinc-100' : 'text-zinc-400 hover:bg-zinc-900/50 hover:text-zinc-200'}`}
+                        >
+                          <div className="flex items-center gap-2 truncate pr-4">
+                            <MessageSquare className="w-4 h-4 opacity-50 shrink-0" />
+                            <span className="truncate">{conv.title}</span>
+                          </div>
+                          
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity absolute right-2 bg-gradient-to-l from-zinc-900 pl-4">
+                            <div 
+                              role="button"
+                              onClick={(e) => { e.stopPropagation(); setEditingConvId(conv.id); setEditTitle(conv.title); }} 
+                              className="p-1 hover:text-indigo-400 hover:bg-zinc-800 rounded"
+                              title="Renomear"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </div>
+                            <div 
+                              role="button"
+                              onClick={(e) => handleDeleteConversation(conv.id, e)} 
+                              className="p-1 hover:text-rose-400 hover:bg-zinc-800 rounded"
+                              title="Apagar"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </div>
+                          </div>
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -308,10 +373,15 @@ export default function EcosystemDashboard() {
                   <span className="font-medium">{credits} Créditos</span>
                 </div>
               </div>
-              <Button onClick={handleSignOut} variant="ghost" className="w-full justify-start text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10">
-                <LogOut className="w-4 h-4 mr-2" />
-                Sair da Conta
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" className="flex-1 justify-start text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50" title="Configurações (Em Breve)">
+                  <Settings className="w-4 h-4 mr-2" />
+                  Configurações
+                </Button>
+                <Button onClick={handleSignOut} variant="ghost" size="icon" className="shrink-0 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10" title="Sair">
+                  <LogOut className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
           </motion.aside>
         )}
