@@ -442,7 +442,7 @@ export default function EcosystemDashboard() {
 
             {/* Bottom Footer Controls */}
             <div className="mt-3 flex items-center justify-between text-xs text-zinc-500 px-2">
-              <Select value={modelMode} onValueChange={setModelMode}>
+              <Select value={modelMode} onValueChange={(v) => { if (v) setModelMode(v); }}>
                 <SelectTrigger className="w-auto h-auto p-0 border-0 bg-transparent text-xs hover:text-zinc-300 focus:ring-0 gap-1 shadow-none">
                   <SelectValue placeholder="Modelo" />
                 </SelectTrigger>
