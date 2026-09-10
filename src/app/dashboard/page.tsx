@@ -472,7 +472,7 @@ export default function ExamSolverGrand() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-zinc-900 dark:text-zinc-100">Física Quântica - Resumo</h3>
-                    <p className="text-sm text-zinc-500 mt-1">Gerado a partir do Chat "Atendimento de Física". (Exemplo)</p>
+                    <p className="text-sm text-zinc-500 mt-1">Gerado a partir do Chat &quot;Atendimento de Física&quot;. (Exemplo)</p>
                   </div>
                 </div>
                 
@@ -675,8 +675,8 @@ export default function ExamSolverGrand() {
                 <h3>Uso da Inteligência Artificial</h3>
                 <p>O envio de imagens e perguntas é processado por motores de inteligência artificial de ponta (Gemini-Vision). O conteúdo que você envia não é utilizado para treinar nossos modelos publicamente, sendo restrito apenas à sua sessão de estudo.</p>
 
-                <h3>Cadernos de Estudo e "Minhas Imagens"</h3>
-                <p>As visões de "Cadernos de Estudo" e "Minhas Imagens" funcionam apenas como um reflexo dos seus chats ativos. A privacidade é garantida pelo modelo: apagar a origem apaga o reflexo.</p>
+                <h3>Cadernos de Estudo e &quot;Minhas Imagens&quot;</h3>
+                <p>As visões de &quot;Cadernos de Estudo&quot; e &quot;Minhas Imagens&quot; funcionam apenas como um reflexo dos seus chats ativos. A privacidade é garantida pelo modelo: apagar a origem apaga o reflexo.</p>
 
                 <h3>Contato</h3>
                 <p>Se tiver dúvidas sobre nossa blindagem de dados ou sugerir melhorias no sistema, sinta-se à vontade para nos contactar. Exam Solver AI, focado na sua vitória acadêmica de forma segura.</p>
