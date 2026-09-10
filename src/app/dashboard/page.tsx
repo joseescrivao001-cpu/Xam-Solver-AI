@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { 
   Plus, MessageSquare, Book, Image as ImageIcon, 
   Send, BrainCircuit, AlertCircle, CheckCircle2, 
-  LogOut, Coins, Menu, X, Trash2
+  LogOut, Coins, Menu, X
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -46,7 +46,7 @@ export default function EcosystemDashboard() {
   const [currentConvId, setCurrentConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [credits, setCredits] = useState<number>(0);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<{ id: string } | null>(null);
   
   // Input State
   const [inputText, setInputText] = useState("");
@@ -88,6 +88,7 @@ export default function EcosystemDashboard() {
       }
     };
     initData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Scroll to bottom when messages change
@@ -103,7 +104,7 @@ export default function EcosystemDashboard() {
 
   const createNewChat = async () => {
     if (!user) return;
-    const { data, error } = await supabase.from("conversations").insert({
+    const { data } = await supabase.from("conversations").insert({
       user_id: user.id,
       title: "Nova Conversa"
     }).select().single();

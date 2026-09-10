@@ -46,7 +46,6 @@ export async function POST(req: Request) {
 
     const formData = await req.formData();
     const conversationId = formData.get("conversation_id") as string;
-    const modelRequested = formData.get("model") as string || "gemini-3.6-flash";
     const text = formData.get("text") as string;
     const file = formData.get("file") as File | null;
 
