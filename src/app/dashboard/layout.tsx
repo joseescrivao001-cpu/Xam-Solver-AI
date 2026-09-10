@@ -17,7 +17,7 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen w-full bg-zinc-950 overflow-hidden text-zinc-100">
+    <div className="flex h-screen w-full overflow-hidden transition-colors duration-300 dark:bg-zinc-950 dark:text-zinc-100 bg-white text-zinc-900">
       {/* We pass the user and profile down via children if needed, or children fetch it */}
       {children}
     </div>

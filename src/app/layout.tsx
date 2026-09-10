@@ -9,6 +9,8 @@ const merriweather = Merriweather({
   variable: "--font-merriweather" 
 });
 
+import { ThemeProvider } from "@/components/theme-provider";
+
 export const metadata: Metadata = {
   title: "Exam Solver AI - Lovable Edition",
   description: "A inteligência artificial acadêmica mais avançada do mercado.",
@@ -20,9 +22,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" className="dark">
-      <body className={`${inter.variable} ${merriweather.variable} font-sans bg-zinc-950 text-zinc-50 min-h-screen selection:bg-indigo-500/30 selection:text-indigo-200`}>
-        {children}
+    <html lang="pt-BR" suppressHydrationWarning>
+      <body className={`${inter.variable} ${merriweather.variable} font-sans min-h-screen selection:bg-indigo-500/30 selection:text-indigo-200 transition-colors duration-300 dark:bg-zinc-950 dark:text-zinc-50 bg-white text-zinc-900`}>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

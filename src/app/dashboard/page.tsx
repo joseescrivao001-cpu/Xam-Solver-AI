@@ -18,6 +18,7 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 
 type Message = {
   id: string;
@@ -64,6 +65,9 @@ export default function EcosystemDashboard() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  
+  const { theme, setTheme } = useTheme();
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -252,13 +256,13 @@ export default function EcosystemDashboard() {
   };
 
   return (
-    <div className="flex h-screen w-full bg-zinc-950 text-zinc-100 overflow-hidden font-sans">
+    <div className="flex h-screen w-full dark:bg-zinc-950 bg-white dark:text-zinc-100 text-zinc-900 overflow-hidden font-sans">
       
       {/* Sidebar Overlay for Mobile */}
       {!isSidebarOpen && (
         <button 
           onClick={() => setIsSidebarOpen(true)}
-          className="absolute top-4 left-4 z-50 p-2 bg-zinc-900 rounded-md border border-zinc-800 text-zinc-400 hover:text-zinc-100 md:hidden"
+          className="absolute top-4 left-4 z-50 p-2 dark:bg-zinc-900 bg-zinc-50 rounded-md border dark:border-zinc-800 border-zinc-200 dark:text-zinc-400 text-zinc-500 hover:dark:text-zinc-100 text-zinc-900 md:hidden"
         >
           <Menu className="w-5 h-5" />
         </button>
@@ -271,11 +275,11 @@ export default function EcosystemDashboard() {
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: 280, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
-            className="flex-shrink-0 h-full border-r border-zinc-800/60 bg-zinc-950/80 backdrop-blur-xl flex flex-col z-40 absolute md:relative"
+            className="flex-shrink-0 h-full border-r dark:border-zinc-800 border-zinc-200/60 dark:bg-zinc-950 bg-white/80 backdrop-blur-xl flex flex-col z-40 absolute md:relative"
           >
             <div className="p-4 flex items-center justify-between">
               <h2 className="font-bold text-lg tracking-tight bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">Exam Solver</h2>
-              <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-zinc-400 hover:text-zinc-100 p-1">
+              <button onClick={() => setIsSidebarOpen(false)} className="md:hidden dark:text-zinc-400 text-zinc-500 hover:dark:text-zinc-100 text-zinc-900 p-1">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -302,7 +306,7 @@ export default function EcosystemDashboard() {
                     <p className="px-2 text-xs text-zinc-600 italic">Nenhum caderno.</p>
                   ) : (
                     notebooks.map(nb => (
-                      <button key={nb.id} className="w-full text-left px-2 py-1.5 rounded-md text-sm text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 transition flex items-center gap-2 truncate">
+                      <button key={nb.id} className="w-full text-left px-2 py-1.5 rounded-md text-sm dark:text-zinc-400 text-zinc-500 hover:dark:bg-zinc-900 bg-zinc-50 hover:text-zinc-200 transition flex items-center gap-2 truncate">
                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: nb.color }} />
                         {nb.name}
                       </button>
@@ -320,13 +324,13 @@ export default function EcosystemDashboard() {
                   {conversations.map(conv => (
                     <div key={conv.id} className="relative group">
                       {editingConvId === conv.id ? (
-                        <div className="flex items-center gap-2 w-full px-2 py-1.5 bg-zinc-900 rounded-lg">
+                        <div className="flex items-center gap-2 w-full px-2 py-1.5 dark:bg-zinc-900 bg-zinc-50 rounded-lg">
                           <input 
                             autoFocus
                             value={editTitle}
                             onChange={e => setEditTitle(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && handleRenameConversation(conv.id)}
-                            className="bg-transparent text-sm text-zinc-100 flex-1 outline-none min-w-0"
+                            className="bg-transparent text-sm dark:text-zinc-100 text-zinc-900 flex-1 outline-none min-w-0"
                           />
                           <button onClick={() => handleRenameConversation(conv.id)} className="text-emerald-400 hover:text-emerald-300">
                             <Check className="w-4 h-4" />
@@ -335,7 +339,7 @@ export default function EcosystemDashboard() {
                       ) : (
                         <button 
                           onClick={() => loadConversation(conv.id)}
-                          className={`w-full text-left px-2 py-2 rounded-lg text-sm transition flex items-center justify-between ${currentConvId === conv.id ? 'bg-zinc-800/80 text-zinc-100' : 'text-zinc-400 hover:bg-zinc-900/50 hover:text-zinc-200'}`}
+                          className={`w-full text-left px-2 py-2 rounded-lg text-sm transition flex items-center justify-between ${currentConvId === conv.id ? 'dark:bg-zinc-800 bg-zinc-200/80 dark:text-zinc-100 text-zinc-900' : 'dark:text-zinc-400 text-zinc-500 hover:dark:bg-zinc-900 bg-zinc-50/50 hover:text-zinc-200'}`}
                         >
                           <div className="flex items-center gap-2 truncate pr-4">
                             <MessageSquare className="w-4 h-4 opacity-50 shrink-0" />
@@ -346,7 +350,7 @@ export default function EcosystemDashboard() {
                             <div 
                               role="button"
                               onClick={(e) => { e.stopPropagation(); setEditingConvId(conv.id); setEditTitle(conv.title); }} 
-                              className="p-1 hover:text-indigo-400 hover:bg-zinc-800 rounded"
+                              className="p-1 hover:text-indigo-400 hover:dark:bg-zinc-800 bg-zinc-200 rounded"
                               title="Renomear"
                             >
                               <Edit2 className="w-3 h-3" />
@@ -354,7 +358,7 @@ export default function EcosystemDashboard() {
                             <div 
                               role="button"
                               onClick={(e) => handleDeleteConversation(conv.id, e)} 
-                              className="p-1 hover:text-rose-400 hover:bg-zinc-800 rounded"
+                              className="p-1 hover:text-rose-400 hover:dark:bg-zinc-800 bg-zinc-200 rounded"
                               title="Apagar"
                             >
                               <Trash2 className="w-3 h-3" />
@@ -369,19 +373,19 @@ export default function EcosystemDashboard() {
             </div>
 
             {/* Bottom Profile Area */}
-            <div className="p-4 border-t border-zinc-800/60 bg-zinc-950/50">
+            <div className="p-4 border-t dark:border-zinc-800 border-zinc-200/60 dark:bg-zinc-950 bg-white/50">
               <div className="flex items-center justify-between mb-3 px-1">
-                <div className="flex items-center gap-2 text-sm text-zinc-300">
+                <div className="flex items-center gap-2 text-sm dark:text-zinc-300 text-zinc-700">
                   <Coins className="w-4 h-4 text-emerald-400" />
                   <span className="font-medium">{credits} Créditos</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" className="flex-1 justify-start text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50" title="Configurações (Em Breve)">
+                <Button onClick={() => setIsSettingsOpen(true)} variant="ghost" className="flex-1 justify-start dark:dark:text-zinc-400 text-zinc-500 text-zinc-500 dark:hover:dark:text-zinc-100 text-zinc-900 hover:text-zinc-900 dark:hover:dark:bg-zinc-800 bg-zinc-200/50 hover:bg-zinc-100/50" title="Configurações">
                   <Settings className="w-4 h-4 mr-2" />
                   Configurações
                 </Button>
-                <Button onClick={handleSignOut} variant="ghost" size="icon" className="shrink-0 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10" title="Sair">
+                <Button onClick={handleSignOut} variant="ghost" size="icon" className="shrink-0 dark:dark:text-zinc-400 text-zinc-500 text-zinc-500 hover:text-rose-400 dark:hover:bg-rose-500/10 hover:bg-rose-500/10" title="Sair">
                   <LogOut className="w-4 h-4" />
                 </Button>
               </div>
@@ -391,7 +395,7 @@ export default function EcosystemDashboard() {
       </AnimatePresence>
 
       {/* MAIN CHAT AREA */}
-      <main className="flex-1 flex flex-col h-full bg-zinc-950 relative">
+      <main className="flex-1 flex flex-col h-full dark:bg-zinc-950 bg-white relative">
         
         {/* Messages Container */}
         <div className="flex-1 overflow-y-auto px-4 md:px-8 py-8 scrollbar-thin scrollbar-thumb-zinc-800">
@@ -415,18 +419,18 @@ export default function EcosystemDashboard() {
                   key={msg.id} 
                   className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
                 >
-                  <div className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center ${msg.role === 'user' ? 'bg-zinc-800' : 'bg-indigo-600'}`}>
+                  <div className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center ${msg.role === 'user' ? 'dark:bg-zinc-800 bg-zinc-200' : 'bg-indigo-600'}`}>
                     {msg.role === 'user' ? <span className="text-xs font-bold">U</span> : <BrainCircuit className="w-5 h-5 text-white" />}
                   </div>
                   
-                  <div className={`max-w-[85%] rounded-2xl px-5 py-4 ${msg.role === 'user' ? 'bg-zinc-900 border border-zinc-800' : 'bg-transparent border-none px-0'}`}>
+                  <div className={`max-w-[85%] rounded-2xl px-5 py-4 ${msg.role === 'user' ? 'dark:bg-zinc-900 bg-zinc-50 border dark:border-zinc-800 border-zinc-200' : 'bg-transparent border-none px-0'}`}>
                     {msg.content === "" && isStreaming && idx === messages.length - 1 ? (
                       <div className="flex items-center gap-2 text-indigo-400 text-sm">
                         <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
                         Gerando resposta...
                       </div>
                     ) : (
-                      <div className={`prose prose-invert prose-sm max-w-none ${msg.role === 'ai' ? 'font-serif leading-relaxed text-zinc-300' : 'font-sans text-zinc-200'}`}>
+                      <div className={`prose prose-invert prose-sm max-w-none ${msg.role === 'ai' ? 'font-serif leading-relaxed dark:text-zinc-300 text-zinc-700' : 'font-sans text-zinc-200'}`}>
                         <ReactMarkdown 
                           remarkPlugins={[remarkGfm, remarkMath]} 
                           rehypePlugins={[rehypeKatex]}
@@ -463,7 +467,7 @@ export default function EcosystemDashboard() {
             </AnimatePresence>
 
             {/* Input Box */}
-            <div className="relative bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 rounded-2xl shadow-2xl transition-all focus-within:border-indigo-500/50 focus-within:ring-4 focus-within:ring-indigo-500/10">
+            <div className="relative dark:bg-zinc-900 bg-zinc-50/80 backdrop-blur-xl border dark:border-zinc-800 border-zinc-200/80 rounded-2xl shadow-2xl transition-all focus-within:border-indigo-500/50 focus-within:ring-4 focus-within:ring-indigo-500/10">
               
               {/* Image Preview */}
               <AnimatePresence>
@@ -472,7 +476,7 @@ export default function EcosystemDashboard() {
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    className="px-4 pt-4 pb-2 border-b border-zinc-800/50 flex items-center gap-3"
+                    className="px-4 pt-4 pb-2 border-b dark:border-zinc-800 border-zinc-200/50 flex items-center gap-3"
                   >
                     <div className="flex items-center gap-2 bg-indigo-500/10 text-indigo-400 px-3 py-1.5 rounded-lg text-sm font-medium">
                       <CheckCircle2 className="w-4 h-4" />
@@ -486,7 +490,7 @@ export default function EcosystemDashboard() {
               </AnimatePresence>
 
               <div className="flex items-end gap-2 p-3">
-                <label className="cursor-pointer p-2 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-xl transition shrink-0">
+                <label className="cursor-pointer p-2 dark:text-zinc-400 text-zinc-500 hover:dark:text-zinc-100 text-zinc-900 hover:dark:bg-zinc-800 bg-zinc-200 rounded-xl transition shrink-0">
                   <ImageIcon className="w-5 h-5" />
                   <Input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
                 </label>
@@ -495,7 +499,7 @@ export default function EcosystemDashboard() {
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   placeholder="Envie a questão ou digite aqui..."
-                  className="min-h-[44px] max-h-32 bg-transparent border-0 focus-visible:ring-0 resize-none p-2 text-zinc-100 placeholder:text-zinc-600 scrollbar-thin flex-1"
+                  className="min-h-[44px] max-h-32 bg-transparent border-0 focus-visible:ring-0 resize-none p-2 dark:text-zinc-100 text-zinc-900 placeholder:text-zinc-600 scrollbar-thin flex-1"
                   rows={1}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
@@ -509,7 +513,7 @@ export default function EcosystemDashboard() {
                   onClick={handleSubmit}
                   disabled={isStreaming || (!inputText.trim() && !imageFile)}
                   size="icon"
-                  className={`rounded-xl shrink-0 transition-all duration-300 ${inputText.trim() || imageFile ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-zinc-800 text-zinc-500'}`}
+                  className={`rounded-xl shrink-0 transition-all duration-300 ${inputText.trim() || imageFile ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'dark:bg-zinc-800 bg-zinc-200 text-zinc-500'}`}
                 >
                   <Send className="w-4 h-4" />
                 </Button>
@@ -519,10 +523,10 @@ export default function EcosystemDashboard() {
             {/* Bottom Footer Controls */}
             <div className="mt-3 flex items-center justify-between text-xs text-zinc-500 px-2">
               <Select value={modelMode} onValueChange={(v) => { if (v) setModelMode(v); }}>
-                <SelectTrigger className="w-auto h-auto p-0 border-0 bg-transparent text-xs hover:text-zinc-300 focus:ring-0 gap-1 shadow-none">
+                <SelectTrigger className="w-auto h-auto p-0 border-0 bg-transparent text-xs hover:dark:text-zinc-300 text-zinc-700 focus:ring-0 gap-1 shadow-none">
                   <SelectValue placeholder="Modelo" />
                 </SelectTrigger>
-                <SelectContent className="bg-zinc-900 border-zinc-800 rounded-lg">
+                <SelectContent className="dark:bg-zinc-900 bg-zinc-50 dark:border-zinc-800 border-zinc-200 rounded-lg">
                   <SelectItem value="gemini-1.5-flash">Gemini Flash (Rápido)</SelectItem>
                   <SelectItem value="gemini-1.5-pro">Gemini Pro (Complexo)</SelectItem>
                 </SelectContent>
@@ -534,6 +538,51 @@ export default function EcosystemDashboard() {
         </div>
 
       </main>
+
+      {/* Settings Modal */}
+      <AnimatePresence>
+        {isSettingsOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:dark:bg-zinc-900 bg-zinc-50 border border-zinc-200 dark:dark:border-zinc-800 border-zinc-200 rounded-2xl p-6 w-full max-w-md shadow-2xl relative"
+            >
+              <button onClick={() => setIsSettingsOpen(false)} className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-900 dark:hover:dark:text-zinc-100 text-zinc-900">
+                <X className="w-5 h-5" />
+              </button>
+              
+              <h2 className="text-xl font-bold text-zinc-900 dark:dark:text-zinc-100 text-zinc-900 mb-6 flex items-center gap-2">
+                <Settings className="w-5 h-5" /> Configurações
+              </h2>
+              
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 dark:dark:text-zinc-300 text-zinc-700 mb-2">
+                    Aparência (Tema)
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setTheme('light')}
+                      className={`p-3 rounded-lg border text-sm font-medium flex items-center justify-center gap-2 transition ${theme === 'light' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:dark:text-zinc-400 text-zinc-500 hover:bg-zinc-50 dark:hover:dark:bg-zinc-800 bg-zinc-200'}`}
+                    >
+                      Claro
+                    </button>
+                    <button
+                      onClick={() => setTheme('dark')}
+                      className={`p-3 rounded-lg border text-sm font-medium flex items-center justify-center gap-2 transition ${theme === 'dark' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:dark:text-zinc-400 text-zinc-500 hover:bg-zinc-50 dark:hover:dark:bg-zinc-800 bg-zinc-200'}`}
+                    >
+                      Escuro
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }
