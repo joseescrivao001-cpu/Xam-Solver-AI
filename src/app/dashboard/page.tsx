@@ -247,10 +247,12 @@ export default function ExamSolverGrand() {
     recognition.interimResults = false;
 
     recognition.onstart = () => setIsRecording(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
       setInputText(prev => prev + (prev ? " " : "") + transcript);
     };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onerror = (event: any) => {
       console.error(event.error);
       setIsRecording(false);
@@ -269,6 +271,7 @@ export default function ExamSolverGrand() {
         videoRef.current.srcObject = stream;
       }
     } catch (err) {
+      console.error(err);
       setIsCameraOpen(false);
       setError("Permissão de câmera negada ou dispositivo indisponível.");
     }
