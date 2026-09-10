@@ -19,6 +19,7 @@ import "katex/dist/katex.min.css";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
+import useDrivePicker from 'react-google-drive-picker';
 
 type Message = {
   id: string;
@@ -43,6 +44,7 @@ type GalleryImage = {
 export default function ExamSolverGrand() {
   const supabase = createClient();
   const router = useRouter();
+  const { theme, setTheme } = useTheme();
 
   // Data State
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -53,6 +55,7 @@ export default function ExamSolverGrand() {
   const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([]);
   
   // UI State
+  const [isDataLoading, setIsDataLoading] = useState(true);
   const [activeView, setActiveView] = useState<'chat' | 'notebooks' | 'images'>('chat');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [inputText, setInputText] = useState("");
@@ -61,29 +64,39 @@ export default function ExamSolverGrand() {
   const [modelMode, setModelMode] = useState("gemini-1.5-flash");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notebookFilter, setNotebookFilter] = useState<string | null>(null);
   
-  // Popovers & Modals
+  // Popovers, Modals & Refs
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [isAttachMenuOpen, setIsAttachMenuOpen] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+  
+  const attachRef = useRef<HTMLDivElement>(null);
+  const modelRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Editing State
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [hoveredConvId, setHoveredConvId] = useState<string | null>(null);
 
-  const { theme, setTheme } = useTheme();
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // APIs State
+  const [openDrivePicker] = useDrivePicker();
+  const [isRecording, setIsRecording] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   // Initialize
   useEffect(() => {
     const initData = async () => {
+      setIsDataLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         // GUEST MODE
         const guestCreds = localStorage.getItem("guestCredits");
         setCredits(guestCreds ? parseInt(guestCreds) : 2);
+        setIsDataLoading(false);
         return;
       }
       setUser({ id: user.id, email: user.email });
@@ -95,10 +108,21 @@ export default function ExamSolverGrand() {
       if (convs) setConversations(convs);
       
       if (convs && convs.length > 0) loadConversation(convs[0].id);
+      setIsDataLoading(false);
     };
     initData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, supabase]);
+
+  // Click Outside Listener
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (attachRef.current && !attachRef.current.contains(e.target as Node)) setIsAttachMenuOpen(false);
+      if (modelRef.current && !modelRef.current.contains(e.target as Node)) setIsModelDropdownOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (activeView === 'chat') {
@@ -110,7 +134,6 @@ export default function ExamSolverGrand() {
   useEffect(() => {
     if (activeView === 'images' && user) {
       const fetchImages = async () => {
-        // Obter as imagens apenas dos chats atuais do usuário
         const convIds = conversations.map(c => c.id);
         if (convIds.length === 0) {
           setGalleryImages([]);
@@ -174,7 +197,6 @@ export default function ExamSolverGrand() {
     e.stopPropagation();
     const { error } = await supabase.from("conversations").delete().eq("id", id);
     if (!error) {
-      // Se o chat é apagado, a cascata do banco exclui mensagens e, consequentemente, as imagens somem da galeria!
       setConversations(prev => prev.filter(c => c.id !== id));
       if (currentConvId === id) { 
         setCurrentConvId(null); 
@@ -186,6 +208,100 @@ export default function ExamSolverGrand() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     router.push("/login");
+  };
+
+  // Google Drive Integration
+  const handleDrivePicker = () => {
+    setIsAttachMenuOpen(false);
+    openDrivePicker({
+      clientId: process.env.NEXT_PUBLIC_GOOGLE_DRIVE_CLIENT_ID || "MOCK_CLIENT_ID",
+      developerKey: process.env.NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY || "MOCK_API_KEY",
+      viewId: "DOCS_IMAGES",
+      showUploadView: true,
+      showUploadFolders: true,
+      supportDrives: true,
+      multiselect: false,
+      callbackFunction: (data) => {
+        if (data.action === 'picked' && data.docs[0]) {
+          const doc = data.docs[0];
+          // Since we might not have a real API key configured yet, fallback gracefully
+          if (doc.url) {
+            setError(`O Google Drive vinculou a imagem: ${doc.name}. A integração requer chaves OAuth de Produção.`);
+          }
+        }
+      },
+    });
+  };
+
+  // Microphone (Speech Recognition)
+  const startRecording = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionAPI) {
+      setError("Seu navegador não suporta reconhecimento de voz.");
+      return;
+    }
+    const recognition = new SpeechRecognitionAPI();
+    recognition.lang = 'pt-BR';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => setIsRecording(true);
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setInputText(prev => prev + (prev ? " " : "") + transcript);
+    };
+    recognition.onerror = (event: any) => {
+      console.error(event.error);
+      setIsRecording(false);
+    };
+    recognition.onend = () => setIsRecording(false);
+    recognition.start();
+  };
+
+  // Camera / Webcam
+  const startCamera = async () => {
+    setIsAttachMenuOpen(false);
+    setIsCameraOpen(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      setIsCameraOpen(false);
+      setError("Permissão de câmera negada ou dispositivo indisponível.");
+    }
+  };
+
+  const takePhoto = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement("canvas");
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0);
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const file = new File([blob], "camera-photo.jpg", { type: "image/jpeg" });
+            setImageFile(file);
+            const reader = new FileReader();
+            reader.onloadend = () => setImageBase64(reader.result as string);
+            reader.readAsDataURL(file);
+          }
+        }, "image/jpeg");
+      }
+      stopCamera();
+    }
+  };
+
+  const stopCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+    }
+    setIsCameraOpen(false);
   };
 
   // Chat Submission
@@ -283,8 +399,12 @@ export default function ExamSolverGrand() {
     }
   };
 
+  const filteredConversations = notebookFilter 
+    ? conversations.filter(c => c.title.toLowerCase().includes(notebookFilter.toLowerCase()))
+    : conversations;
+
   return (
-    <div className="flex h-screen w-full bg-[#f9f9fa] dark:bg-[#131314] text-[#1f1f1f] dark:text-[#e3e3e3] font-sans overflow-hidden transition-colors duration-500">
+    <div className="flex h-[100dvh] w-full bg-[#f9f9fa] dark:bg-[#131314] text-[#1f1f1f] dark:text-[#e3e3e3] font-sans overflow-hidden transition-colors duration-500">
       
       {/* ---------------- SIDEBAR ---------------- */}
       <AnimatePresence>
@@ -293,7 +413,7 @@ export default function ExamSolverGrand() {
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: 280, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
-            className="flex-shrink-0 h-full bg-[#f0f0f0] dark:bg-[#1e1e20] flex flex-col z-40 relative shadow-[1px_0_10px_rgba(0,0,0,0.02)] dark:shadow-[1px_0_10px_rgba(0,0,0,0.2)]"
+            className="flex-shrink-0 h-full bg-[#f0f0f0] dark:bg-[#1e1e20] flex flex-col z-40 relative shadow-[1px_0_10px_rgba(0,0,0,0.02)] dark:shadow-[1px_0_10px_rgba(0,0,0,0.2)] absolute md:relative w-[280px]"
           >
             {/* Header */}
             <div className="flex items-center justify-between p-4 mb-2">
@@ -319,7 +439,7 @@ export default function ExamSolverGrand() {
                 <PenSquare className="w-4 h-4" />
                 Iniciar novo
               </button>
-              <button onClick={() => setActiveView('notebooks')} className={`w-full flex items-center gap-3 px-3 py-2 text-[14px] font-medium rounded-xl transition ${activeView === 'notebooks' ? 'bg-white dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/50 dark:border-zinc-700/50' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
+              <button onClick={() => {setActiveView('notebooks'); setNotebookFilter(null);}} className={`w-full flex items-center gap-3 px-3 py-2 text-[14px] font-medium rounded-xl transition ${activeView === 'notebooks' ? 'bg-white dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/50 dark:border-zinc-700/50' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
                 <Book className="w-4 h-4" /> Cadernos de estudo
               </button>
               <button onClick={() => setActiveView('images')} className={`w-full flex items-center gap-3 px-3 py-2 text-[14px] font-medium rounded-xl transition ${activeView === 'images' ? 'bg-white dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/50 dark:border-zinc-700/50' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
@@ -329,9 +449,21 @@ export default function ExamSolverGrand() {
 
             {/* Chats List */}
             <div className="flex-1 overflow-y-auto px-3 mt-8 scrollbar-hide">
-              <p className="px-3 text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-2">Meus Chats</p>
+              <div className="flex items-center justify-between mb-2 px-3">
+                <p className="text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Meus Chats</p>
+                {notebookFilter && (
+                  <span className="text-[10px] bg-indigo-500/10 text-indigo-500 px-2 rounded-full cursor-pointer" onClick={() => setNotebookFilter(null)}>
+                    Limpar Filtro
+                  </span>
+                )}
+              </div>
+              
               <div className="space-y-0.5">
-                {conversations.map(conv => (
+                {isDataLoading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="h-9 w-full bg-zinc-200/50 dark:bg-zinc-800/50 rounded-lg animate-pulse mb-1"></div>
+                  ))
+                ) : filteredConversations.map(conv => (
                   <div key={conv.id} onMouseEnter={() => setHoveredConvId(conv.id)} onMouseLeave={() => setHoveredConvId(null)} className="relative">
                     {editingConvId === conv.id ? (
                       <div className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-zinc-800 rounded-lg shadow-sm border border-indigo-500/30">
@@ -344,7 +476,7 @@ export default function ExamSolverGrand() {
                       </div>
                     ) : (
                       <button 
-                        onClick={() => loadConversation(conv.id)}
+                        onClick={() => {loadConversation(conv.id); if(window.innerWidth < 768) setIsSidebarOpen(false);}}
                         className={`w-full text-left px-3 py-2 rounded-lg text-[13px] transition flex items-center justify-between ${activeView === 'chat' && currentConvId === conv.id ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 font-medium' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/40 dark:hover:bg-zinc-800/40'}`}
                       >
                         <span className="truncate pr-4">{conv.title}</span>
@@ -398,7 +530,7 @@ export default function ExamSolverGrand() {
       </AnimatePresence>
 
       {/* ---------------- MAIN AREA ---------------- */}
-      <main className="flex-1 flex flex-col h-full relative z-10">
+      <main className="flex-1 flex flex-col h-full relative z-10 overflow-hidden">
         
         {/* Animated Background Gradients */}
         <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden opacity-40 dark:opacity-20">
@@ -407,7 +539,7 @@ export default function ExamSolverGrand() {
         </div>
 
         {/* Top Navbar */}
-        <header className="h-14 flex items-center px-4 relative z-20">
+        <header className="h-14 flex items-center px-4 relative z-20 shrink-0">
           {!isSidebarOpen && (
             <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition">
               <Menu className="w-5 h-5" />
@@ -423,7 +555,7 @@ export default function ExamSolverGrand() {
         {/* ---------------- VIEWS ---------------- */}
 
         {activeView === 'images' && (
-          <div className="flex-1 overflow-y-auto px-6 py-8 relative z-10">
+          <div className="flex-1 overflow-y-auto px-6 py-8 relative z-10 scrollbar-hide">
             <div className="max-w-5xl mx-auto">
               <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mb-2">Minhas Imagens</h1>
               <p className="text-zinc-500 mb-8">O histórico completo de imagens enviadas. Se o chat for apagado, a imagem também some.</p>
@@ -443,11 +575,11 @@ export default function ExamSolverGrand() {
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {galleryImages.map(img => (
-                    <div key={img.id} className="relative aspect-square rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800 group cursor-pointer shadow-sm hover:shadow-md transition">
+                    <div key={img.id} onClick={() => loadConversation(img.conversation_id)} className="relative aspect-square rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800 group cursor-pointer shadow-sm hover:shadow-md transition">
                       <img src={img.url} alt="Galeria" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-3">
                         <span className="text-white text-xs font-medium bg-black/50 px-2 py-1 rounded-md backdrop-blur-sm truncate w-full">
-                          {new Date(img.created_at).toLocaleDateString()}
+                          Ir para o chat
                         </span>
                       </div>
                     </div>
@@ -459,38 +591,45 @@ export default function ExamSolverGrand() {
         )}
 
         {activeView === 'notebooks' && (
-          <div className="flex-1 overflow-y-auto px-6 py-8 relative z-10">
+          <div className="flex-1 overflow-y-auto px-6 py-8 relative z-10 scrollbar-hide">
             <div className="max-w-5xl mx-auto">
               <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mb-2">Cadernos de estudo</h1>
-              <p className="text-zinc-500 mb-8">Filtre livros, artigos da internet e adicione lógica estruturada ao seu aprendizado.</p>
+              <p className="text-zinc-500 mb-8">Filtre seus chats, arquivos e provas em pastas temáticas inteligentes.</p>
               
               <div className="relative mb-8">
                 <Search className="absolute left-4 top-3.5 w-5 h-5 text-zinc-400" />
                 <input 
                   type="text" 
-                  placeholder="Pesquisar nos seus cadernos ou na web..." 
+                  onChange={(e) => setNotebookFilter(e.target.value)}
+                  placeholder="Pesquisar nos seus chats ou cadernos..." 
                   className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl py-3.5 pl-12 pr-4 text-[15px] shadow-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all dark:text-zinc-100"
                 />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex gap-4 hover:border-indigo-500/50 transition cursor-pointer">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center shrink-0">
+                <div 
+                  onClick={() => { setNotebookFilter("Física"); setActiveView('chat'); }} 
+                  className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex gap-4 hover:border-indigo-500 hover:shadow-md transition cursor-pointer group"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center shrink-0 group-hover:bg-indigo-500/20 transition">
                     <FileText className="w-6 h-6 text-indigo-500" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-zinc-900 dark:text-zinc-100">Física Quântica - Resumo</h3>
-                    <p className="text-sm text-zinc-500 mt-1">Gerado a partir do Chat &quot;Atendimento de Física&quot;. (Exemplo)</p>
+                    <h3 className="font-semibold text-zinc-900 dark:text-zinc-100 group-hover:text-indigo-500 transition">Física Quântica</h3>
+                    <p className="text-sm text-zinc-500 mt-1">Filtra chats e resoluções sobre Física.</p>
                   </div>
                 </div>
                 
-                <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex gap-4 hover:border-indigo-500/50 transition cursor-pointer">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+                <div 
+                  onClick={() => { setNotebookFilter("Cálculo"); setActiveView('chat'); }} 
+                  className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex gap-4 hover:border-emerald-500 hover:shadow-md transition cursor-pointer group"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/20 transition">
                     <Book className="w-6 h-6 text-emerald-500" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-zinc-900 dark:text-zinc-100">Cálculo II - Integrais</h3>
-                    <p className="text-sm text-zinc-500 mt-1">Materiais e links coletados da web. (Exemplo)</p>
+                    <h3 className="font-semibold text-zinc-900 dark:text-zinc-100 group-hover:text-emerald-500 transition">Cálculo II e Integrais</h3>
+                    <p className="text-sm text-zinc-500 mt-1">Filtra análises matemáticas e cálculos da web.</p>
                   </div>
                 </div>
               </div>
@@ -509,7 +648,17 @@ export default function ExamSolverGrand() {
                 )}
               </AnimatePresence>
 
-              {messages.length === 0 ? (
+              {isDataLoading ? (
+                <div className="max-w-4xl mx-auto w-full space-y-8 pb-40 pt-10">
+                  <div className="flex gap-4 justify-end">
+                    <div className="w-48 h-12 bg-zinc-200/60 dark:bg-zinc-800/60 rounded-3xl rounded-tr-sm animate-pulse"></div>
+                  </div>
+                  <div className="flex gap-4 justify-start">
+                    <div className="w-8 h-8 rounded-full bg-zinc-200/60 dark:bg-zinc-800/60 animate-pulse shrink-0 mt-1"></div>
+                    <div className="w-full max-w-lg h-32 bg-zinc-200/40 dark:bg-zinc-800/40 rounded-3xl rounded-tl-sm animate-pulse"></div>
+                  </div>
+                </div>
+              ) : messages.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-end max-w-3xl mx-auto w-full pb-10">
                   <motion.h1 
                     initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
@@ -574,10 +723,10 @@ export default function ExamSolverGrand() {
                   </AnimatePresence>
 
                   {/* Main Input Row */}
-                  <div className="flex items-end gap-2 px-3 py-3">
+                  <div className="flex items-end gap-2 px-3 py-3 relative">
                     
-                    {/* Attachment Dropdown logic */}
-                    <div className="relative">
+                    {/* Attachment Dropdown */}
+                    <div className="relative" ref={attachRef}>
                       <button onClick={() => setIsAttachMenuOpen(!isAttachMenuOpen)} className="p-3 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition shrink-0">
                         <Plus className="w-5 h-5" />
                       </button>
@@ -593,11 +742,11 @@ export default function ExamSolverGrand() {
                             <button onClick={() => { setIsAttachMenuOpen(false); fileInputRef.current?.click(); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-left">
                               <Paperclip className="w-4 h-4 text-zinc-500" /> Carregar ficheiros
                             </button>
-                            <button className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-left">
+                            <button onClick={handleDrivePicker} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-left">
                               <Cloud className="w-4 h-4 text-blue-500" /> Adicionar a partir do Drive
                             </button>
                             <div className="border-t border-zinc-100 dark:border-zinc-800 my-1"></div>
-                            <button className="w-full flex items-center justify-between px-4 py-3 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-left">
+                            <button onClick={startCamera} className="w-full flex items-center justify-between px-4 py-3 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-left">
                               <span className="flex items-center gap-3"><Camera className="w-4 h-4 text-zinc-500" /> Tirar foto</span>
                               <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-zinc-400" />
                             </button>
@@ -619,7 +768,7 @@ export default function ExamSolverGrand() {
                     <div className="flex items-center gap-1 pb-1 pr-1 shrink-0">
                       
                       {/* Model Selector Pill */}
-                      <div className="relative">
+                      <div className="relative" ref={modelRef}>
                         <button onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
                           {modelMode === "gemini-1.5-flash" ? "Instant" : "Pro"}
                           <ChevronDown className="w-3.5 h-3.5" />
@@ -632,8 +781,10 @@ export default function ExamSolverGrand() {
                         )}
                       </div>
 
-                      <button className="p-2.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
-                        <Mic className="w-5 h-5" />
+                      {/* Microphone */}
+                      <button onClick={startRecording} className={`relative p-2.5 rounded-full transition ${isRecording ? 'text-rose-500 bg-rose-500/10' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}>
+                        {isRecording && <span className="absolute inset-0 rounded-full animate-ping bg-rose-500/40" />}
+                        <Mic className="w-5 h-5 relative z-10" />
                       </button>
 
                       <button 
@@ -657,7 +808,34 @@ export default function ExamSolverGrand() {
         )}
       </main>
 
-      {/* ---------------- PRIVACY MODAL ---------------- */}
+      {/* ---------------- CAMERA MODAL ---------------- */}
+      <AnimatePresence>
+        {isCameraOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-black border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl max-w-xl w-full"
+            >
+              <div className="flex items-center justify-between p-4 border-b border-zinc-800">
+                <h3 className="text-white font-medium">Tirar Foto</h3>
+                <button onClick={stopCamera} className="text-zinc-400 hover:text-white transition"><X className="w-5 h-5"/></button>
+              </div>
+              <div className="relative bg-zinc-900 aspect-video flex items-center justify-center">
+                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+              </div>
+              <div className="p-4 flex justify-center border-t border-zinc-800">
+                <button onClick={takePhoto} className="w-16 h-16 rounded-full border-4 border-zinc-500 hover:border-white transition flex items-center justify-center group">
+                  <div className="w-12 h-12 bg-white rounded-full group-active:scale-90 transition"></div>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------------- PRIVACY / TERMS MODAL ---------------- */}
       <AnimatePresence>
         {isPrivacyOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
@@ -668,14 +846,14 @@ export default function ExamSolverGrand() {
               className="bg-white dark:bg-[#1e1e20] w-full max-w-2xl max-h-[85vh] rounded-[2rem] shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col"
             >
               <div className="flex items-center justify-between p-6 border-b border-zinc-100 dark:border-zinc-800/60">
-                <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Política de Privacidade</h2>
+                <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Termos e Privacidade</h2>
                 <button onClick={() => setIsPrivacyOpen(false)} className="p-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition">
                   <X className="w-5 h-5" />
                 </button>
               </div>
               <div className="p-8 overflow-y-auto prose prose-sm dark:prose-invert max-w-none text-zinc-600 dark:text-zinc-300">
-                <h3>Introdução</h3>
-                <p>Bem-vindo ao Exam Solver AI, uma plataforma avançada de assistência acadêmica criada por <strong>José Escrivão</strong>. Nossa prioridade é garantir a precisão e a segurança absoluta dos seus dados durante a resolução de exames e perguntas.</p>
+                <h3>Introdução e Termos</h3>
+                <p>Bem-vindo ao Exam Solver AI, uma plataforma avançada de assistência acadêmica criada por <strong>José Escrivão</strong>. Ao utilizar nosso software, você concorda em utilizá-lo estritamente para propósitos educacionais.</p>
                 
                 <h3>Dados Coletados e Sua Exclusão (Cascata)</h3>
                 <p>Quando você utiliza nossos serviços, armazenamos temporariamente suas <strong>imagens, textos e cadernos de estudo</strong> para fornecer continuidade nos chats. No entanto, aplicamos uma rigorosa política de <em>Cascade Delete</em> (Exclusão em Cascata). <strong>Isso significa que, assim que você exclui um chat, todos os registros, imagens e análises associadas a ele são sumariamente apagados de nossos servidores, de forma irreversível.</strong></p>
