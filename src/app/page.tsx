@@ -23,7 +23,7 @@ export default function Home() {
                 Entrar
               </Button>
             </Link>
-            <Link href="/login">
+            <Link href="/dashboard">
               <Button className="rounded-full bg-indigo-500 hover:bg-indigo-400 text-white border-0">
                 Começar Grátis
               </Button>
@@ -69,8 +69,8 @@ export default function Home() {
             transition={{ duration: 0.7, delay: 0.3 }}
             className="mt-10 flex flex-col gap-4 sm:flex-row"
           >
-            <Link href="/login">
-              <Button size="lg" className="rounded-full bg-zinc-100 text-zinc-900 hover:bg-zinc-200 h-14 px-8 text-base font-medium transition-all hover:scale-105">
+            <Link href="/dashboard">
+              <Button size="lg" className="rounded-full bg-zinc-100 text-zinc-900 hover:bg-zinc-200 h-14 px-8 text-base font-medium transition-all hover:scale-105 shadow-lg shadow-white/10">
                 Experimente o Solver <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>

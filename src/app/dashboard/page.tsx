@@ -66,7 +66,12 @@ export default function ExamSolverGrand() {
   useEffect(() => {
     const initData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return router.push("/login");
+      if (!user) {
+        // GUEST MODE
+        const guestCreds = localStorage.getItem("guestCredits");
+        setCredits(guestCreds ? parseInt(guestCreds) : 2);
+        return;
+      }
       setUser({ id: user.id, email: user.email });
 
       const { data: profile } = await supabase.from("profiles").select("credits_balance").eq("id", user.id).single();
@@ -138,15 +143,23 @@ export default function ExamSolverGrand() {
   };
 
   const handleSubmit = async () => {
-    if (!user) return;
     if (!inputText.trim() && !imageFile) return;
-    if (credits < 1) return setError("Créditos insuficientes para nova resolução.");
+    if (credits < 1) {
+      if (!user) {
+        setError("Créditos de teste esgotados. Crie uma conta grátis para continuar!");
+        setTimeout(() => router.push("/login"), 3000);
+        return;
+      }
+      return setError("Créditos insuficientes para nova resolução.");
+    }
 
     setIsStreaming(true);
     setError(null);
     let activeConvId = currentConvId;
     
-    if (!activeConvId) {
+    if (!user) {
+      activeConvId = "guest"; // special flag
+    } else if (!activeConvId) {
       const { data } = await supabase.from("conversations").insert({
         user_id: user.id,
         title: inputText.trim() ? inputText.slice(0, 30) + "..." : "Resolução de Imagem"
@@ -196,13 +209,19 @@ export default function ExamSolverGrand() {
           setMessages(prev => prev.map(msg => msg.id === tempAiMsgId ? { ...msg, content: streamedData } : msg));
         }
       }
-      setCredits(prev => Math.max(0, prev - 1));
+      
+      setCredits(prev => {
+        const newVal = Math.max(0, prev - 1);
+        if (!user) localStorage.setItem("guestCredits", newVal.toString());
+        return newVal;
+      });
+      
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro inesperado.");
       setMessages(prev => prev.filter(msg => msg.id !== tempAiMsgId));
     } finally {
       setIsStreaming(false);
-      if (activeConvId) loadConversation(activeConvId);
+      if (activeConvId && activeConvId !== "guest") loadConversation(activeConvId);
     }
   };
 
@@ -291,23 +310,29 @@ export default function ExamSolverGrand() {
                 <div className="flex items-center justify-between relative z-10">
                   <div>
                     <p className="text-[13px] font-semibold flex items-center gap-1"><Sparkles className="w-3.5 h-3.5"/> ExamSolver Pro</p>
-                    <p className="text-[11px] text-blue-100 mt-0.5">{credits} Créditos disponíveis</p>
+                    <p className="text-[11px] text-blue-100 mt-0.5">{credits} Créditos {user ? 'disponíveis' : 'de teste'}</p>
                   </div>
-                  <Button size="sm" className="bg-white text-blue-600 hover:bg-zinc-100 h-7 text-xs rounded-lg px-3">Upgrade</Button>
+                  <Button size="sm" onClick={() => !user && router.push("/login")} className="bg-white text-blue-600 hover:bg-zinc-100 h-7 text-xs rounded-lg px-3">Upgrade</Button>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between px-2 py-2 mt-2 cursor-pointer hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 rounded-xl transition">
+              <div onClick={() => !user && router.push("/login")} className="flex items-center justify-between px-2 py-2 mt-2 cursor-pointer hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 rounded-xl transition">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-zinc-300 dark:bg-zinc-700 flex items-center justify-center text-zinc-600 dark:text-zinc-300">
                     <User className="w-4 h-4" />
                   </div>
                   <div className="overflow-hidden max-w-[120px]">
-                    <p className="text-[13px] font-medium text-zinc-900 dark:text-zinc-200 truncate">{user?.email?.split('@')[0] || "Usuário"}</p>
-                    <p className="text-[11px] text-zinc-500 truncate">{user?.email}</p>
+                    {user ? (
+                      <>
+                        <p className="text-[13px] font-medium text-zinc-900 dark:text-zinc-200 truncate">{user?.email?.split('@')[0] || "Usuário"}</p>
+                        <p className="text-[11px] text-zinc-500 truncate">{user?.email}</p>
+                      </>
+                    ) : (
+                      <p className="text-[13px] font-medium text-zinc-900 dark:text-zinc-200 truncate">Iniciar sessão</p>
+                    )}
                   </div>
                 </div>
-                <LogOut onClick={handleSignOut} className="w-4 h-4 text-zinc-400 hover:text-rose-500 transition" />
+                {user && <LogOut onClick={handleSignOut} className="w-4 h-4 text-zinc-400 hover:text-rose-500 transition" />}
               </div>
             </div>
           </motion.aside>
@@ -349,10 +374,10 @@ export default function ExamSolverGrand() {
           </AnimatePresence>
 
           {messages.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center max-w-3xl mx-auto w-full mb-20">
+            <div className="flex-1 flex flex-col items-center justify-end max-w-3xl mx-auto w-full pb-10">
               <motion.h1 
                 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-                className="text-3xl md:text-4xl font-semibold text-zinc-900 dark:text-zinc-100 mb-8 text-center"
+                className="text-3xl md:text-4xl font-semibold text-zinc-900 dark:text-zinc-100 mb-6 text-center"
               >
                 Como posso ajudar, estudante?
               </motion.h1>
@@ -396,7 +421,7 @@ export default function ExamSolverGrand() {
         </div>
 
         {/* ---------------- FLOATING INPUT AREA ---------------- */}
-        <div className={`absolute left-0 right-0 w-full px-4 md:px-12 transition-all duration-700 z-30 flex flex-col items-center justify-end pointer-events-none ${messages.length === 0 ? 'bottom-[40%]' : 'bottom-0 pb-8 bg-gradient-to-t from-[#f9f9fa] via-[#f9f9fa]/80 dark:from-[#131314] dark:via-[#131314]/80 to-transparent'}`}>
+        <div className={`left-0 right-0 w-full px-4 md:px-12 transition-all duration-700 z-30 flex flex-col items-center justify-end pointer-events-none ${messages.length === 0 ? 'relative pb-[20vh]' : 'absolute bottom-0 pb-8 bg-gradient-to-t from-[#f9f9fa] via-[#f9f9fa]/80 dark:from-[#131314] dark:via-[#131314]/80 to-transparent'}`}>
           <div className="max-w-3xl w-full pointer-events-auto">
             
             {/* Input Container */}

@@ -53,19 +53,21 @@ export async function POST(req: Request) {
   try {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
+    
+    let isGuest = !user;
+    let profile = null;
 
-    if (!user) {
-      return new Response(JSON.stringify({ error: "Não autorizado." }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-    }
+    if (!isGuest) {
+      const { data: p } = await supabase
+        .from("profiles")
+        .select("credits_balance")
+        .eq("id", user?.id)
+        .single();
+      profile = p;
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("credits_balance")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile || profile.credits_balance < 1) {
-      return new Response(JSON.stringify({ error: "Créditos insuficientes." }), { status: 402, headers: { 'Content-Type': 'application/json' } });
+      if (!profile || profile.credits_balance < 1) {
+        return new Response(JSON.stringify({ error: "Créditos insuficientes." }), { status: 402, headers: { 'Content-Type': 'application/json' } });
+      }
     }
 
     const formData = await req.formData();
@@ -77,33 +79,32 @@ export async function POST(req: Request) {
       return new Response(JSON.stringify({ error: "Forneça uma imagem ou texto." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
-    if (!conversationId) {
-      return new Response(JSON.stringify({ error: "conversation_id não fornecido." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    const userMessageContent = text || "Imagem enviada";
+    
+    // Só insere se não for convidado e tiver conversationId válido
+    if (!isGuest && conversationId && conversationId !== "guest") {
+      await supabase.from("messages").insert({
+        conversation_id: conversationId,
+        role: 'user',
+        content: userMessageContent
+      });
     }
 
-    // Salvar a mensagem do usuário no banco
-    const userMessageContent = text || "Imagem enviada";
-    await supabase.from("messages").insert({
-      conversation_id: conversationId,
-      role: 'user',
-      content: userMessageContent
-    });
-
-    // Buscar histórico do chat para contexto
-    const { data: historyData } = await supabase
-      .from("messages")
-      .select("*")
-      .eq("conversation_id", conversationId)
-      .order("created_at", { ascending: true });
-
-    // Converter para formato do Gemini (pular a última = prompt atual)
     let chatHistory: Content[] = [];
-    if (historyData && historyData.length > 1) {
-      const previousMsgs = historyData.slice(0, -1);
-      chatHistory = previousMsgs.map(m => ({
-        role: m.role === 'ai' ? 'model' : 'user',
-        parts: [{ text: m.content }]
-      }));
+    if (!isGuest && conversationId && conversationId !== "guest") {
+      const { data: historyData } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: true });
+
+      if (historyData && historyData.length > 1) {
+        const previousMsgs = historyData.slice(0, -1);
+        chatHistory = previousMsgs.map(m => ({
+          role: m.role === 'ai' ? 'model' : 'user',
+          parts: [{ text: m.content }]
+        }));
+      }
     }
 
     const promptParts: Part[] = [];
@@ -173,18 +174,20 @@ export async function POST(req: Request) {
           }
 
           // Salvar resposta da IA no banco
-          const { error: insertError } = await supabase.from("messages").insert({
-            conversation_id: conversationId,
-            role: 'ai',
-            content: finalResponseText
-          });
+          if (!isGuest && conversationId && conversationId !== "guest" && profile) {
+            const { error: insertError } = await supabase.from("messages").insert({
+              conversation_id: conversationId,
+              role: 'ai',
+              content: finalResponseText
+            });
 
-          // Debitar crédito somente se salvou com sucesso
-          if (!insertError) {
-            await supabase
-              .from("profiles")
-              .update({ credits_balance: profile.credits_balance - 1 })
-              .eq("id", user.id);
+            // Debitar crédito somente se salvou com sucesso
+            if (!insertError) {
+              await supabase
+                .from("profiles")
+                .update({ credits_balance: profile.credits_balance - 1 })
+                .eq("id", user!.id);
+            }
           }
 
           controller.close();

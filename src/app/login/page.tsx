@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { BrainCircuit, Sparkles, Mail, Lock, Loader2 } from "lucide-react";
+import { BrainCircuit, Sparkles, Mail, Lock, Loader2, ArrowLeft } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -57,6 +57,15 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-8 bg-zinc-950 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-indigo-900 via-zinc-950 to-zinc-950 relative overflow-hidden">
+      
+      {/* Back to Home Button */}
+      <button 
+        onClick={() => router.push("/")}
+        className="absolute top-6 left-6 z-50 text-white/70 hover:text-white flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 backdrop-blur-md transition-all border border-white/10 shadow-lg"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        <span className="text-sm font-medium">Voltar ao site</span>
+      </button>
       
       {/* Background Floating Orbs */}
       <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] rounded-full bg-indigo-600/20 blur-[120px] animate-pulse" style={{ animationDuration: '8s' }} />
