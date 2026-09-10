@@ -3,10 +3,12 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { 
   Menu, X, Plus, Image as ImageIcon, 
-  Send, BrainCircuit, AlertCircle, Edit2, Trash2, 
-  Check, Sun, Moon, CreditCard, Lock, User, 
+  BrainCircuit, AlertCircle, Edit2, Trash2, 
+  Check, Sun, Moon, User, 
   Book, Sparkles, LogOut, ChevronDown, PenSquare, ArrowUp, Mic, ShieldCheck
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -77,6 +79,7 @@ export default function ExamSolverGrand() {
       if (convs && convs.length > 0) loadConversation(convs[0].id);
     };
     initData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, supabase]);
 
   useEffect(() => {
