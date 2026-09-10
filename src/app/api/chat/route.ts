@@ -1,16 +1,8 @@
-export const runtime = 'edge';
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
 
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/server";
 import { GoogleGenerativeAI, Part, Content } from "@google/generative-ai";
-
-// Supabase client direto (sem cookies) para o Edge Runtime
-// Usamos a SERVICE_ROLE_KEY para bypass RLS no backend
-function createEdgeSupabase() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!);
 
@@ -33,7 +25,6 @@ Formate sua resposta EXATAMENTE com os seguintes cabeçalhos Markdown:
 
 Seja conciso no raciocínio e OBRIGATÓRIO entregar a RESPOSTA FINAL no formato [LETRA] - [TEXTO]. Se você não entregar a resposta final, a tarefa será considerada FALHA.`;
 
-// Helper: converte ArrayBuffer para Base64 sem depender de Node Buffer (compatível com Edge)
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = "";
@@ -45,72 +36,17 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 export async function POST(req: Request) {
   try {
-    // Extrair token do cookie de autenticação do Supabase
-    const cookieHeader = req.headers.get("cookie") || "";
-    const supabaseAdmin = createEdgeSupabase();
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-    // Buscar tokens de sessão do cookie
-    // O Supabase SSR armazena tokens em cookies como sb-<ref>-auth-token
-    let userId: string | null = null;
-    
-    // Tentar extrair o access_token dos cookies
-    const cookies = cookieHeader.split(";").map(c => c.trim());
-    let accessToken: string | null = null;
-    for (const cookie of cookies) {
-      if (cookie.includes("auth-token")) {
-        // O cookie pode estar codificado como base64 chunk
-        const parts = cookie.split("=");
-        if (parts.length >= 2) {
-          accessToken = parts.slice(1).join("=");
-          break;
-        }
-      }
-    }
-    
-    // Usar service role para verificar o JWT e obter o user
-    if (accessToken) {
-      try {
-        const decoded = JSON.parse(decodeURIComponent(accessToken));
-        if (decoded && decoded.access_token) {
-          const { data: { user } } = await supabaseAdmin.auth.getUser(decoded.access_token);
-          if (user) userId = user.id;
-        }
-      } catch {
-        // O token pode estar em outro formato, tentar chunked cookies
-      }
-    }
-    
-    // Fallback: tentar pegar de chunks (sb-xxx-auth-token.0, .1, etc)
-    if (!userId) {
-      const chunks: string[] = [];
-      for (const cookie of cookies) {
-        if (cookie.includes("auth-token")) {
-          const eqIdx = cookie.indexOf("=");
-          if (eqIdx !== -1) chunks.push(cookie.substring(eqIdx + 1));
-        }
-      }
-      if (chunks.length > 0) {
-        try {
-          const full = chunks.join("");
-          const decoded = JSON.parse(decodeURIComponent(full));
-          if (decoded && decoded.access_token) {
-            const { data: { user } } = await supabaseAdmin.auth.getUser(decoded.access_token);
-            if (user) userId = user.id;
-          }
-        } catch {
-          // Ignore parse errors
-        }
-      }
+    if (!user) {
+      return new Response(JSON.stringify({ error: "Não autorizado." }), { status: 401, headers: { 'Content-Type': 'application/json' } });
     }
 
-    if (!userId) {
-      return new Response(JSON.stringify({ error: "Não autorizado. Faça login novamente." }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-    }
-
-    const { data: profile } = await supabaseAdmin
+    const { data: profile } = await supabase
       .from("profiles")
       .select("credits_balance")
-      .eq("id", userId)
+      .eq("id", user.id)
       .single();
 
     if (!profile || profile.credits_balance < 1) {
@@ -127,19 +63,19 @@ export async function POST(req: Request) {
     }
 
     if (!conversationId) {
-       return new Response(JSON.stringify({ error: "conversation_id não fornecido." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: "conversation_id não fornecido." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
     // Salvar a mensagem do usuário no banco
     const userMessageContent = text || "Imagem enviada";
-    await supabaseAdmin.from("messages").insert({
+    await supabase.from("messages").insert({
       conversation_id: conversationId,
       role: 'user',
       content: userMessageContent
     });
 
     // Buscar histórico do chat para contexto
-    const { data: historyData } = await supabaseAdmin
+    const { data: historyData } = await supabase
       .from("messages")
       .select("*")
       .eq("conversation_id", conversationId)
@@ -148,11 +84,11 @@ export async function POST(req: Request) {
     // Converter para formato do Gemini (pular a última = prompt atual)
     let chatHistory: Content[] = [];
     if (historyData && historyData.length > 1) {
-       const previousMsgs = historyData.slice(0, -1);
-       chatHistory = previousMsgs.map(m => ({
-          role: m.role === 'ai' ? 'model' : 'user',
-          parts: [{ text: m.content }]
-       }));
+      const previousMsgs = historyData.slice(0, -1);
+      chatHistory = previousMsgs.map(m => ({
+        role: m.role === 'ai' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }));
     }
 
     const promptParts: Part[] = [];
@@ -189,22 +125,22 @@ export async function POST(req: Request) {
 
           let result;
           if (chatHistory.length > 0) {
-             const chat = model.startChat({
-               history: chatHistory,
-               generationConfig: {
-                 temperature: 0.1, 
-                 maxOutputTokens: 8192,
-               }
-             });
-             result = await chat.sendMessageStream(promptParts);
+            const chat = model.startChat({
+              history: chatHistory,
+              generationConfig: {
+                temperature: 0.1,
+                maxOutputTokens: 8192,
+              }
+            });
+            result = await chat.sendMessageStream(promptParts);
           } else {
-             result = await model.generateContentStream({
-                contents: [{ role: "user", parts: promptParts }],
-                generationConfig: {
-                  temperature: 0.1, 
-                  maxOutputTokens: 8192,
-                },
-             });
+            result = await model.generateContentStream({
+              contents: [{ role: "user", parts: promptParts }],
+              generationConfig: {
+                temperature: 0.1,
+                maxOutputTokens: 8192,
+              },
+            });
           }
 
           let finalResponseText = "";
@@ -214,7 +150,7 @@ export async function POST(req: Request) {
             controller.enqueue(new TextEncoder().encode(chunkText));
           }
 
-          // Validação apenas na primeira mensagem (exigir "Resposta" no formato)
+          // Validação apenas na primeira mensagem
           if (chatHistory.length === 0 && !finalResponseText.includes('Resposta') && !finalResponseText.includes('Resposta:')) {
             controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: A IA falhou em formatar a Resposta Final. Crédito NÃO deduzido.**"));
             controller.close();
@@ -222,7 +158,7 @@ export async function POST(req: Request) {
           }
 
           // Salvar resposta da IA no banco
-          const { error: insertError } = await supabaseAdmin.from("messages").insert({
+          const { error: insertError } = await supabase.from("messages").insert({
             conversation_id: conversationId,
             role: 'ai',
             content: finalResponseText
@@ -230,12 +166,10 @@ export async function POST(req: Request) {
 
           // Debitar crédito somente se salvou com sucesso
           if (!insertError) {
-            await supabaseAdmin
+            await supabase
               .from("profiles")
               .update({ credits_balance: profile.credits_balance - 1 })
-              .eq("id", userId);
-          } else {
-             console.error("Erro ao inserir mensagem da IA no Supabase:", insertError);
+              .eq("id", user.id);
           }
 
           controller.close();
