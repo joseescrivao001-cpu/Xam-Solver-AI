@@ -106,8 +106,8 @@ export async function POST(req: Request) {
               break; // Sucesso
             } catch (err: unknown) {
               const errMsg = err instanceof Error ? err.message : String(err);
-              if (errMsg.includes('429') || errMsg.includes('Too Many Requests') || errMsg.includes('quota') || errMsg.includes('exhausted')) {
-                console.log(`[Rodízio] ${modelName} falhou com 429, tentando o próximo...`);
+              if (errMsg.includes('429') || errMsg.includes('Too Many Requests') || errMsg.includes('quota') || errMsg.includes('exhausted') || errMsg.includes('503') || errMsg.includes('404')) {
+                console.log(`[Rodízio] ${modelName} falhou com 429/503/404, tentando o próximo...`);
                 continue;
               }
               throw err;

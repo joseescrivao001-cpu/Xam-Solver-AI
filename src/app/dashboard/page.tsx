@@ -66,6 +66,14 @@ export default function ExamSolverGrand() {
   const [error, setError] = useState<string | null>(null);
   const [notebookFilter, setNotebookFilter] = useState<string | null>(null);
   
+  // Auto-dismiss toasts (errors)
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+  
   // Popovers, Modals & Refs
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [isAttachMenuOpen, setIsAttachMenuOpen] = useState(false);
@@ -213,9 +221,17 @@ export default function ExamSolverGrand() {
   // Google Drive Integration
   const handleDrivePicker = () => {
     setIsAttachMenuOpen(false);
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_DRIVE_CLIENT_ID;
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY;
+    
+    if (!clientId || !apiKey) {
+      setError("A integração com o Google Drive estará disponível em breve.");
+      return;
+    }
+    
     openDrivePicker({
-      clientId: process.env.NEXT_PUBLIC_GOOGLE_DRIVE_CLIENT_ID || "MOCK_CLIENT_ID",
-      developerKey: process.env.NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY || "MOCK_API_KEY",
+      clientId: clientId,
+      developerKey: apiKey,
       viewId: "DOCS_IMAGES",
       showUploadView: true,
       showUploadFolders: true,
@@ -256,6 +272,7 @@ export default function ExamSolverGrand() {
     recognition.onerror = (event: any) => {
       console.error(event.error);
       setIsRecording(false);
+      setError("Permissão de microfone negada ou indisponível.");
     };
     recognition.onend = () => setIsRecording(false);
     recognition.start();
@@ -785,10 +802,13 @@ export default function ExamSolverGrand() {
                       </div>
 
                       {/* Microphone */}
-                      <button onClick={startRecording} className={`relative p-2.5 rounded-full transition ${isRecording ? 'text-rose-500 bg-rose-500/10' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}>
-                        {isRecording && <span className="absolute inset-0 rounded-full animate-ping bg-rose-500/40" />}
-                        <Mic className="w-5 h-5 relative z-10" />
-                      </button>
+                      <div className="relative flex items-center justify-center">
+                        {isRecording && <span className="absolute -top-8 left-1/2 -translate-x-1/2 text-[10px] bg-rose-500 text-white px-2 py-0.5 rounded-full animate-pulse whitespace-nowrap z-50 shadow-md">Ouvindo...</span>}
+                        <button onClick={startRecording} className={`relative p-2.5 rounded-full transition ${isRecording ? 'text-rose-500 bg-rose-500/10' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}>
+                          {isRecording && <span className="absolute inset-0 rounded-full animate-ping bg-rose-500/40" />}
+                          <Mic className="w-5 h-5 relative z-10" />
+                        </button>
+                      </div>
 
                       <button 
                         onClick={handleSubmit}
