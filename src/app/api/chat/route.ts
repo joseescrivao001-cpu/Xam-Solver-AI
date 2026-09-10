@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     
-    let isGuest = !user;
+    const isGuest = !user;
     let profile = null;
 
     if (!isGuest) {
