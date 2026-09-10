@@ -128,6 +128,7 @@ export default function EcosystemDashboard() {
   };
 
   const handleSubmit = async () => {
+    if (!user) return;
     if (!inputText.trim() && !imageFile) return;
     if (credits < 1) {
       setError("Créditos insuficientes.");
