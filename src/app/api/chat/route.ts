@@ -7,8 +7,8 @@ import { GoogleGenerativeAI, Part, Content } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!);
 
-const SYSTEM_INSTRUCTION = `Você é o "Exam Solver AI", um Especialista Acadêmico supremo de resolução de provas.
-Seu objetivo é resolver a questão da imagem ou texto com precisão matemática e lógica impecável (Protocolo Zero Alucinações).
+const SYSTEM_INSTRUCTION = `Você é o "Exam Solver AI", um Especialista Acadêmico supremo de resolução de provas e tutor de estudos.
+Seu objetivo é resolver questões de provas, vestibulares, concursos e exercícios acadêmicos com precisão matemática impecável (Protocolo Zero Alucinações).
 
 SOBRE O SEU CRIADOR (IMPORTANTE):
 - Criador: José Escrivão Silvestre (Nascido em 25/01/2002 em Luanda, Angola)
@@ -17,26 +17,27 @@ SOBRE O SEU CRIADOR (IMPORTANTE):
 - Atuação: Técnico e Gerente de TI na PANDA TECH (2024-Presente).
 Sempre que falar dele, demonstre profundo respeito e orgulho da sua autoria.
 
-Processo: Analisar Imagem -> Montar Equações/Lógica -> Verificar Alternativas -> Validar Resultado.
-
-REGRAS DE FORMATAÇÃO (MUITO IMPORTANTE):
-- Use LaTeX puro envolvendo as fórmulas com cifrão duplo para blocos ($$ ... $$) ou cifrão simples para linha ($ ... $).
-
-Formate sua resposta EXATAMENTE com os seguintes cabeçalhos Markdown:
+MODO DE OPERAÇÃO:
+1. Para Questões de Provas, Exercícios ou Imagens de Exames:
+- Processo: Analisar Imagem/Texto -> Montar Equações/Lógica -> Verificar Alternativas -> Validar Resultado.
+- Use LaTeX puro envolvendo fórmulas com cifrão duplo para blocos ($$ ... $$) ou cifrão simples para linha ($ ... $).
+- Formate a resposta exatamente com os seguintes tópicos:
 
 ### [RESPOSTA]
-(Sua resposta final e direta. Alternativa correta e texto)
+(Sua resposta final e direta. No formato [LETRA] - [TEXTO] quando for de múltipla escolha)
 
 ### [EXPLICAÇÃO]
 (Seu raciocínio passo a passo detalhado)
 
 ### [VERIFICAÇÃO]
-(A prova real ou por que as alternativas erradas estão incorretas)
+(A prova real ou justificativa de por que as demais alternativas estão incorretas)
 
 ### [CONFIANÇA]
 (Exemplo: 100%)
 
-Seja conciso no raciocínio e OBRIGATÓRIO entregar a RESPOSTA FINAL no formato [LETRA] - [TEXTO]. Se você não entregar a resposta final, a tarefa será considerada FALHA.`;
+2. Para Saudações ("oi", "olá"), Dúvidas sobre o Sistema ou Conversas Gerais:
+- Responda cordialmente em tom profissional e acolhedor.
+- Apresente-se como o Exam Solver AI e convide o estudante a enviar a foto ou texto da questão que deseja resolver.`;
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -96,11 +97,34 @@ export async function POST(req: Request) {
         .order("created_at", { ascending: true });
 
       if (historyData && historyData.length > 1) {
+        // Exclui a mensagem recém-adicionada
         const previousMsgs = historyData.slice(0, -1);
-        chatHistory = previousMsgs.map(m => ({
-          role: m.role === 'ai' ? 'model' : 'user',
-          parts: [{ text: m.content }]
-        }));
+        
+        // Higienizar histórico: alternar estritamente entre user e model
+        const sanitized: Content[] = [];
+        for (const m of previousMsgs) {
+          const role: 'user' | 'model' = m.role === 'ai' ? 'model' : 'user';
+          if (!m.content || !m.content.trim()) continue;
+
+          if (sanitized.length > 0 && sanitized[sanitized.length - 1].role === role) {
+            sanitized[sanitized.length - 1].parts[0].text += `\n${m.content}`;
+          } else {
+            sanitized.push({
+              role,
+              parts: [{ text: m.content }]
+            });
+          }
+        }
+
+        // O histórico do Gemini deve começar com 'user' e terminar com 'model'
+        while (sanitized.length > 0 && sanitized[0].role !== 'user') {
+          sanitized.shift();
+        }
+        while (sanitized.length > 0 && sanitized[sanitized.length - 1].role !== 'model') {
+          sanitized.pop();
+        }
+
+        chatHistory = sanitized;
       }
     }
 
@@ -131,7 +155,7 @@ export async function POST(req: Request) {
         controller.enqueue(new TextEncoder().encode(" "));
 
         try {
-          const geminiModels = ['gemini-1.5-pro-latest', 'gemini-1.5-flash'];
+          const geminiModels = ['gemini-1.5-flash', 'gemini-1.5-pro'];
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           let result: any = null;
           let finalResponseText = "";
@@ -144,33 +168,30 @@ export async function POST(req: Request) {
                   model: modelName,
                   systemInstruction: SYSTEM_INSTRUCTION,
                 },
-                { apiVersion: 'v1' } // Exigência explícita
+                { apiVersion: 'v1' }
               );
 
               if (chatHistory.length > 0) {
                 const chat = model.startChat({
                   history: chatHistory,
-                  generationConfig: { temperature: 0.1, maxOutputTokens: 8192 }
+                  generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
                 });
                 result = await chat.sendMessageStream(promptParts);
               } else {
                 result = await model.generateContentStream({
                   contents: [{ role: "user", parts: promptParts }],
-                  generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
+                  generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
                 });
               }
-              break; // Sucesso, sai do loop
+              break; // Sucesso com Gemini
             } catch (err: unknown) {
               const errMsg = err instanceof Error ? err.message : String(err);
-              if (errMsg.includes('429') || errMsg.includes('Too Many Requests') || errMsg.includes('quota') || errMsg.includes('exhausted') || errMsg.includes('503') || errMsg.includes('404')) {
-                console.log(`[Rodízio] ${modelName} falhou, tentando o próximo...`);
-                continue;
-              }
-              throw err;
+              console.log(`[Rodízio] ${modelName} falhou: ${errMsg}. Tentando próximo...`);
+              continue;
             }
           }
 
-          // Groq Fallback se nenhum Gemini funcionar e a chave existir
+          // Groq Fallback se Gemini não estiver disponível
           if (!result && process.env.GROQ_API_KEY) {
              usedGroq = true;
              console.warn("[FAILOVER] Tier 1 e 2 do Google falharam. Usando GROQ como Tier Nuclear.");
@@ -189,7 +210,7 @@ export async function POST(req: Request) {
              
              let groqContent = text || "Responda a questão.";
              if (groqImageUrl) {
-                groqContent = `[IMAGEM ENVIADA PELO USUÁRIO (NÃO PROCESSADA POR CONTA DO FALLBACK PARA LLAMA 3.3)]: ${text || 'Descreva a resposta assumindo que é uma questão.'}`;
+                groqContent = `[IMAGEM ENVIADA PELO USUÁRIO (NÃO PROCESSADA NO FALLBACK GROQ)]: ${text || 'Por favor, descreva os detalhes da questão para resolução.'}`;
              }
 
              groqMessages.push({
@@ -206,7 +227,7 @@ export async function POST(req: Request) {
                body: JSON.stringify({
                  model: "openai/gpt-oss-120b",
                  messages: groqMessages,
-                 temperature: 0.1,
+                 temperature: 0.2,
                  max_tokens: 8192,
                  stream: true
                })
@@ -217,23 +238,29 @@ export async function POST(req: Request) {
              }
              
              const reader = groqRes.body?.getReader();
-             const decoder = new TextDecoder();
+             const decoder = new TextDecoder("utf-8");
              if (reader) {
+                let sseBuffer = "";
                 while (true) {
                   const { done, value } = await reader.read();
                   if (done) break;
-                  const chunkStr = decoder.decode(value);
-                  const lines = chunkStr.split('\n');
+                  sseBuffer += decoder.decode(value, { stream: true });
+                  const lines = sseBuffer.split('\n');
+                  // Preservar a última linha incompleta no buffer!
+                  sseBuffer = lines.pop() || "";
+                  
                   for (const line of lines) {
-                    if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+                    const trimmed = line.trim();
+                    if (trimmed.startsWith('data: ') && trimmed !== 'data: [DONE]') {
                       try {
-                        const data = JSON.parse(line.slice(6));
-                        const content = data.choices[0]?.delta?.content || "";
-                        finalResponseText += content;
-                        controller.enqueue(new TextEncoder().encode(content));
-                      } catch(e) {
-                         // Ignorar parses inválidos
-                         console.error(e);
+                        const data = JSON.parse(trimmed.slice(6));
+                        const content = data.choices?.[0]?.delta?.content || "";
+                        if (content) {
+                          finalResponseText += content;
+                          controller.enqueue(new TextEncoder().encode(content));
+                        }
+                      } catch (e) {
+                         console.error("SSE parse error:", e);
                       }
                     }
                   }
@@ -245,7 +272,7 @@ export async function POST(req: Request) {
             return;
           }
 
-          if (!usedGroq) {
+          if (!usedGroq && result) {
             for await (const chunk of result.stream) {
               const chunkText = chunk.text();
               finalResponseText += chunkText;
@@ -253,18 +280,14 @@ export async function POST(req: Request) {
             }
           }
 
-          // Validação rigorosa do marcador [RESPOSTA] (Flexibilizada)
-          const hasTag = finalResponseText.includes('[RESPOSTA]') || finalResponseText.includes('RESPOSTA');
-          if (!hasTag) {
-            if (finalResponseText.length > 50) {
-              controller.enqueue(new TextEncoder().encode("\n\n*⚠️ [AVISO DO SISTEMA]: A formatação da IA foi imprecisa, mas o conteúdo foi recuperado.*"));
-            } else {
-              controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: A IA falhou em gerar uma resposta útil. Crédito NÃO deduzido.**"));
-              controller.close();
-              return;
-            }
+          // Validação de entrega útil
+          if (!finalResponseText || finalResponseText.trim().length < 5) {
+            controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: A IA não gerou uma resposta válida. Crédito NÃO deduzido.**"));
+            controller.close();
+            return;
           }
 
+          // Salvar no banco e debitar crédito
           if (!isGuest && conversationId && conversationId !== "guest" && profile) {
             const { error: insertError } = await supabase.from("messages").insert({
               conversation_id: conversationId,

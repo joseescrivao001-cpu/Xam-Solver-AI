@@ -88,7 +88,7 @@ export async function POST(req: Request) {
         controller.enqueue(new TextEncoder().encode(" "));
 
         try {
-          const geminiModels = ['gemini-1.5-pro-latest', 'gemini-1.5-flash'];
+          const geminiModels = ['gemini-1.5-flash', 'gemini-1.5-pro'];
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           let result: any = null;
           let finalResponseText = "";
@@ -101,21 +101,18 @@ export async function POST(req: Request) {
                   model: modelName,
                   systemInstruction: SYSTEM_INSTRUCTION,
                 },
-                { apiVersion: 'v1' } // Exigência explícita
+                { apiVersion: 'v1' }
               );
 
               result = await model.generateContentStream({
                 contents: [{ role: "user", parts: promptParts }],
-                generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
+                generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
               });
               break; 
             } catch (err: unknown) {
               const errMsg = err instanceof Error ? err.message : String(err);
-              if (errMsg.includes('429') || errMsg.includes('Too Many Requests') || errMsg.includes('quota') || errMsg.includes('exhausted') || errMsg.includes('503') || errMsg.includes('404')) {
-                console.log(`[Rodízio] ${modelName} falhou, tentando o próximo...`);
-                continue;
-              }
-              throw err;
+              console.log(`[Rodízio] ${modelName} falhou: ${errMsg}. Tentando próximo...`);
+              continue;
             }
           }
 
@@ -140,7 +137,7 @@ export async function POST(req: Request) {
                    { role: "system", content: SYSTEM_INSTRUCTION },
                    { role: "user", content: groqContent }
                  ],
-                 temperature: 0.1,
+                 temperature: 0.2,
                  max_tokens: 8192,
                  stream: true
                })
@@ -149,20 +146,26 @@ export async function POST(req: Request) {
              if (!groqRes.ok) throw new Error("Groq fallback failed");
              
              const reader = groqRes.body?.getReader();
-             const decoder = new TextDecoder();
+             const decoder = new TextDecoder("utf-8");
              if (reader) {
+                let sseBuffer = "";
                 while (true) {
                   const { done, value } = await reader.read();
                   if (done) break;
-                  const chunkStr = decoder.decode(value);
-                  const lines = chunkStr.split('\n');
+                  sseBuffer += decoder.decode(value, { stream: true });
+                  const lines = sseBuffer.split('\n');
+                  sseBuffer = lines.pop() || "";
+                  
                   for (const line of lines) {
-                    if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+                    const trimmed = line.trim();
+                    if (trimmed.startsWith('data: ') && trimmed !== 'data: [DONE]') {
                       try {
-                        const data = JSON.parse(line.slice(6));
-                        const content = data.choices[0]?.delta?.content || "";
-                        finalResponseText += content;
-                        controller.enqueue(new TextEncoder().encode(content));
+                        const data = JSON.parse(trimmed.slice(6));
+                        const content = data.choices?.[0]?.delta?.content || "";
+                        if (content) {
+                          finalResponseText += content;
+                          controller.enqueue(new TextEncoder().encode(content));
+                        }
                       } catch(e) { console.error(e); }
                     }
                   }
@@ -178,16 +181,11 @@ export async function POST(req: Request) {
             }
           }
 
-          // Validação rigorosa do marcador [RESPOSTA] (Flexibilizada)
-          const hasTag = finalResponseText.includes('[RESPOSTA]') || finalResponseText.includes('RESPOSTA');
-          if (!hasTag) {
-            if (finalResponseText.length > 50) {
-              controller.enqueue(new TextEncoder().encode("\n\n*⚠️ [AVISO DO SISTEMA]: A formatação da IA foi imprecisa, mas o conteúdo foi recuperado.*"));
-            } else {
-              controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: A IA falhou em gerar uma resposta útil. Crédito NÃO deduzido.**"));
-              controller.close();
-              return;
-            }
+          // Validação de entrega útil
+          if (!finalResponseText || finalResponseText.trim().length < 5) {
+            controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: A IA não gerou uma resposta válida. Crédito NÃO deduzido.**"));
+            controller.close();
+            return;
           }
 
           const { error: insertError } = await supabase.from("exams").insert({
