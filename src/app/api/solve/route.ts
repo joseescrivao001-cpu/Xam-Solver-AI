@@ -178,10 +178,16 @@ export async function POST(req: Request) {
             }
           }
 
-          if (!finalResponseText.includes('[RESPOSTA]') && !finalResponseText.includes('RESPOSTA')) {
-            controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: A IA falhou em formatar a Resposta Final com a tag [RESPOSTA]. Crédito NÃO deduzido.**"));
-            controller.close();
-            return;
+          // Validação rigorosa do marcador [RESPOSTA] (Flexibilizada)
+          const hasTag = finalResponseText.includes('[RESPOSTA]') || finalResponseText.includes('RESPOSTA');
+          if (!hasTag) {
+            if (finalResponseText.length > 50) {
+              controller.enqueue(new TextEncoder().encode("\n\n*⚠️ [AVISO DO SISTEMA]: A formatação da IA foi imprecisa, mas o conteúdo foi recuperado.*"));
+            } else {
+              controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: A IA falhou em gerar uma resposta útil. Crédito NÃO deduzido.**"));
+              controller.close();
+              return;
+            }
           }
 
           const { error: insertError } = await supabase.from("exams").insert({
