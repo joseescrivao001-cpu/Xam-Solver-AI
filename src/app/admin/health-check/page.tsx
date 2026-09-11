@@ -48,8 +48,8 @@ export default async function HealthCheckPage() {
     // 2. Testar chamada GenerateContent com o modelo selecionado
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
-      const modelToUse = modelEnv || "gemini-3.6-flash";
-      const model = genAI.getGenerativeModel({ model: modelToUse });
+      const modelToUse = modelEnv || "gemini-1.5-flash";
+      const model = genAI.getGenerativeModel({ model: modelToUse }, { apiVersion: "v1" });
       
       const result = await model.generateContent("Responda exatamente com a palavra: OK");
       geminiTestStatus = `Sucesso usando o modelo: ${modelToUse}. Resposta: ${result.response.text()}`;

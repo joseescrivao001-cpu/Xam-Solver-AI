@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { isSuperAdmin } from "@/lib/admin-auth";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, DynamicRetrievalMode } from "@google/generative-ai";
 import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
@@ -214,35 +214,67 @@ export async function GET() {
   let geminiStatus = "NOT_TESTED";
   let geminiError: string | null = null;
   if (process.env.GOOGLE_GEMINI_API_KEY) {
-    const candidateModels = ["gemini-1.5-flash-latest", "gemini-1.5-pro-latest", "gemini-2.0-flash", "gemini-pro", "gemini-1.5-flash"];
+    const candidateModels = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"];
     const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY);
     
     for (const modelName of candidateModels) {
       try {
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent("Ping");
+        const model = genAI.getGenerativeModel(
+          { 
+            model: modelName,
+            tools: [
+              {
+                googleSearchRetrieval: {
+                  dynamicRetrievalConfig: {
+                    mode: DynamicRetrievalMode.MODE_DYNAMIC,
+                    dynamicThreshold: 0.3,
+                  },
+                },
+              },
+            ],
+          },
+          { apiVersion: 'v1' }
+        );
+        const result = await model.generateContent("Ping. Responda: OK");
         if (result.response.text()) {
-          geminiStatus = `HEALTHY (${modelName})`;
+          geminiStatus = `HEALTHY (${modelName} v1 + Grounding Search)`;
           geminiError = null;
           break;
         }
-      } catch (err) {
-        geminiError = err instanceof Error ? err.message : "Falha na API Gemini";
+      } catch {
+        try {
+          const modelSimple = genAI.getGenerativeModel(
+            { model: modelName },
+            { apiVersion: 'v1' }
+          );
+          const result = await modelSimple.generateContent("Ping. Responda: OK");
+          if (result.response.text()) {
+            geminiStatus = `HEALTHY (${modelName} v1)`;
+            geminiError = null;
+            break;
+          }
+        } catch (innerErr) {
+          geminiError = innerErr instanceof Error ? innerErr.message : "Falha na API Gemini";
+        }
       }
     }
   } else {
     geminiStatus = "MISSING_KEY";
   }
 
-  const expectedRedirectUri = "https://xam-solver-ai.vercel.app/auth/callback";
+  const targetSupabaseUrl = supabaseUrl || "https://<seu-projeto>.supabase.co";
+  const expectedSupabaseRedirectUri = `${targetSupabaseUrl}/auth/v1/callback`;
+  const expectedVercelCallbackUri = "https://xam-solver-ai.vercel.app/auth/callback";
 
   report.integrations = {
     status: geminiStatus.startsWith("HEALTHY") ? "PASS" : "WARN",
     geminiAiStatus: geminiStatus,
     geminiError,
     googleOAuth: {
-      expectedRedirectUri,
-      status401Reason: "Se o Google Auth exibir erro 401 (invalid_client), significa que no Google Cloud Console o Redirect URI acima não está cadastrado em 'URIs de redirecionamento autorizados' ou o Client Secret expirou.",
+      supabaseRedirectUri: expectedSupabaseRedirectUri,
+      vercelCallbackUri: expectedVercelCallbackUri,
+      expectedRedirectUri: expectedSupabaseRedirectUri,
+      status401Reason: "Erro 401 (invalid_client): O Client ID/Secret configurado no Supabase Dashboard (Auth > Providers > Google) difere do Google Cloud Console, ou o Redirect URI do Supabase abaixo não foi adicionado em 'URIs de redirecionamento autorizados'.",
     },
   };
 

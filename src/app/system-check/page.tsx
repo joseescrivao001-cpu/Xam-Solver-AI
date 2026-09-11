@@ -64,6 +64,8 @@ interface DiagnosticReport {
     geminiAiStatus: string;
     geminiError: string | null;
     googleOAuth: {
+      supabaseRedirectUri?: string;
+      vercelCallbackUri?: string;
       expectedRedirectUri: string;
       status401Reason: string;
     };
@@ -464,14 +466,19 @@ export default function SystemCheckPage() {
               <div className="flex items-center justify-between">
                 <span className="text-zinc-300 font-medium flex items-center gap-1.5">
                   <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-                  Conexão Gemini 1.5 API
+                  Conexão Gemini 1.5 API (v1 + Grounding)
                 </span>
                 <span className={`font-mono font-bold ${
-                  report?.integrations.geminiAiStatus === "HEALTHY" ? "text-emerald-400" : "text-rose-400"
+                  report?.integrations.geminiAiStatus?.startsWith("HEALTHY") ? "text-emerald-400" : "text-rose-400"
                 }`}>
-                  {report?.integrations.geminiAiStatus === "HEALTHY" ? "CONECTADO (OK)" : report?.integrations.geminiAiStatus}
+                  {report?.integrations.geminiAiStatus?.startsWith("HEALTHY") ? "CONECTADO (OK)" : report?.integrations.geminiAiStatus}
                 </span>
               </div>
+              {report?.integrations.geminiAiStatus?.startsWith("HEALTHY") && (
+                <p className="font-mono text-[11px] text-emerald-400 bg-emerald-500/10 p-2 rounded border border-emerald-500/20">
+                  {report.integrations.geminiAiStatus}
+                </p>
+              )}
               {report?.integrations.geminiError && (
                 <p className="font-mono text-[11px] text-rose-400 bg-rose-500/10 p-2 rounded border border-rose-500/20">
                   {report.integrations.geminiError}
@@ -483,13 +490,20 @@ export default function SystemCheckPage() {
             <div className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800/60 space-y-2">
               <span className="text-zinc-300 font-medium flex items-center gap-1.5">
                 <Globe className="w-3.5 h-3.5 text-blue-400" />
-                Diagnóstico do Google OAuth (Erro 401)
+                Diagnóstico do Google OAuth (Erro 401: invalid_client)
               </span>
-              <p className="text-zinc-400 leading-relaxed">
+              <p className="text-zinc-400 leading-relaxed text-[11px]">
                 {report?.integrations.googleOAuth.status401Reason}
               </p>
-              <div className="p-2 rounded bg-zinc-900 border border-zinc-800 font-mono text-[11px] text-blue-300 break-all">
-                Redirect URI Obrigatório: {report?.integrations.googleOAuth.expectedRedirectUri}
+              <div className="space-y-1.5 p-2 rounded bg-zinc-900 border border-zinc-800 font-mono text-[11px]">
+                <div className="text-zinc-400">1. URI Obrigatória no Google Cloud:</div>
+                <div className="text-emerald-400 break-all select-all font-bold">
+                  {report?.integrations.googleOAuth.supabaseRedirectUri || report?.integrations.googleOAuth.expectedRedirectUri}
+                </div>
+                <div className="text-zinc-400 pt-1">2. Callback Frontend:</div>
+                <div className="text-blue-300 break-all select-all">
+                  {report?.integrations.googleOAuth.vercelCallbackUri || "https://xam-solver-ai.vercel.app/auth/callback"}
+                </div>
               </div>
             </div>
           </div>

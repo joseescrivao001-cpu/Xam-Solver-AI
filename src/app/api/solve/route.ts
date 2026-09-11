@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import { Buffer } from "node:buffer";
 import { createClient } from "@/lib/supabase/server";
-import { GoogleGenerativeAI, Part } from "@google/generative-ai";
+import { GoogleGenerativeAI, Part, DynamicRetrievalMode } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!);
 
@@ -112,6 +112,16 @@ export async function POST(req: Request) {
                 {
                   model: modelName,
                   systemInstruction: SYSTEM_INSTRUCTION,
+                  tools: [
+                    {
+                      googleSearchRetrieval: {
+                        dynamicRetrievalConfig: {
+                          mode: DynamicRetrievalMode.MODE_DYNAMIC,
+                          dynamicThreshold: 0.3,
+                        },
+                      },
+                    },
+                  ],
                 },
                 { apiVersion: 'v1' }
               );
@@ -123,8 +133,24 @@ export async function POST(req: Request) {
               break; 
             } catch (err: unknown) {
               const errMsg = err instanceof Error ? err.message : String(err);
-              console.log(`[Rodízio] ${modelName} falhou: ${errMsg}. Tentando próximo...`);
-              continue;
+              console.log(`[Rodízio] ${modelName} com Grounding falhou: ${errMsg}. Tentando fallback sem tools na v1...`);
+              try {
+                const modelFallback = genAI.getGenerativeModel(
+                  {
+                    model: modelName,
+                    systemInstruction: SYSTEM_INSTRUCTION,
+                  },
+                  { apiVersion: 'v1' }
+                );
+                result = await modelFallback.generateContentStream({
+                  contents: [{ role: "user", parts: promptParts }],
+                  generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
+                });
+                break;
+              } catch (fallbackErr) {
+                console.log(`[Rodízio] ${modelName} fallback v1 falhou: ${fallbackErr}. Tentando próximo...`);
+                continue;
+              }
             }
           }
 

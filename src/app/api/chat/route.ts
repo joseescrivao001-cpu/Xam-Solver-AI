@@ -3,7 +3,7 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 import { createClient } from "@/lib/supabase/server";
-import { GoogleGenerativeAI, Part, Content } from "@google/generative-ai";
+import { GoogleGenerativeAI, Part, Content, DynamicRetrievalMode } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!);
 
@@ -200,6 +200,16 @@ export async function POST(req: Request) {
                 {
                   model: modelName,
                   systemInstruction: SYSTEM_INSTRUCTION,
+                  tools: [
+                    {
+                      googleSearchRetrieval: {
+                        dynamicRetrievalConfig: {
+                          mode: DynamicRetrievalMode.MODE_DYNAMIC,
+                          dynamicThreshold: 0.3,
+                        },
+                      },
+                    },
+                  ],
                 },
                 { apiVersion: 'v1' }
               );
@@ -219,8 +229,31 @@ export async function POST(req: Request) {
               break; // Sucesso com Gemini
             } catch (err: unknown) {
               const errMsg = err instanceof Error ? err.message : String(err);
-              console.log(`[Rodízio] ${modelName} falhou: ${errMsg}. Tentando próximo...`);
-              continue;
+              console.log(`[Rodízio] ${modelName} com Grounding falhou: ${errMsg}. Tentando fallback sem tools na v1...`);
+              try {
+                const fallbackModel = genAI.getGenerativeModel(
+                  {
+                    model: modelName,
+                    systemInstruction: SYSTEM_INSTRUCTION,
+                  },
+                  { apiVersion: 'v1' }
+                );
+                if (chatHistory.length > 0) {
+                  const chat = fallbackModel.startChat({
+                    history: chatHistory,
+                    generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
+                  });
+                  result = await chat.sendMessageStream(promptParts);
+                } else {
+                  result = await fallbackModel.generateContentStream({
+                    contents: [{ role: "user", parts: promptParts }],
+                    generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
+                  });
+                }
+                break;
+              } catch {
+                continue;
+              }
             }
           }
 
