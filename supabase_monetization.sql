@@ -37,10 +37,12 @@ CREATE TABLE IF NOT EXISTS public.payment_proofs (
 -- 3. Habilitar Row Level Security (RLS) para payment_proofs
 ALTER TABLE public.payment_proofs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Usuários podem visualizar seus próprios comprovativos" ON public.payment_proofs;
 CREATE POLICY "Usuários podem visualizar seus próprios comprovativos"
   ON public.payment_proofs FOR SELECT
   USING ( auth.uid() = user_id );
 
+DROP POLICY IF EXISTS "Usuários podem enviar seus próprios comprovativos" ON public.payment_proofs;
 CREATE POLICY "Usuários podem enviar seus próprios comprovativos"
   ON public.payment_proofs FOR INSERT
   WITH CHECK ( auth.uid() = user_id );
