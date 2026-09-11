@@ -66,13 +66,37 @@ export default function ExamSolverGrand() {
   // UI State
   const [isDataLoading, setIsDataLoading] = useState(true);
   const [activeView, setActiveView] = useState<'chat' | 'notebooks' | 'images'>('chat');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const [inputText, setInputText] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [modelMode, setModelMode] = useState("gemini-1.5-flash");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Adaptive Sidebar & Persistence
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 1024;
+      setIsMobile(mobile);
+      const saved = localStorage.getItem("sidebar_open");
+      if (saved !== null) {
+        setIsSidebarOpen(saved === "true");
+      } else {
+        setIsSidebarOpen(!mobile);
+      }
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const toggleSidebar = (open: boolean) => {
+    setIsSidebarOpen(open);
+    localStorage.setItem("sidebar_open", open ? "true" : "false");
+  };
 
   // Notebooks State (CRUD & Linking)
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
@@ -384,7 +408,7 @@ export default function ExamSolverGrand() {
   const handleResetPassword = async () => {
     if (!user?.email) return;
     const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
-      redirectTo: `${window.location.origin}/login`,
+      redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset-password`,
     });
     if (error) {
       setSettingsMessage(`Erro: ${error.message}`);
@@ -648,43 +672,59 @@ export default function ExamSolverGrand() {
   return (
     <div className="flex h-[100dvh] w-full bg-zinc-50 dark:bg-zinc-950 text-[#1f1f1f] dark:text-[#e3e3e3] font-sans overflow-hidden transition-colors duration-500">
       
-      {/* ---------------- SIDEBAR ---------------- */}
+      {/* ---------------- SIDEBAR (ADAPTIVE DRAWER) ---------------- */}
       <AnimatePresence>
         {isSidebarOpen && (
-          <motion.aside 
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 280, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            className="flex-shrink-0 h-full bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border-r border-zinc-200 dark:border-zinc-800/60 flex flex-col z-40 relative shadow-sm w-[280px]"
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 mb-1">
-              <div className="flex items-center gap-2 px-2 cursor-pointer" onClick={() => setActiveView('chat')}>
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center shadow-md">
-                  <BrainCircuit className="w-4 h-4 text-white" />
+          <>
+            {/* Mobile Backdrop Overlay */}
+            {isMobile && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => toggleSidebar(false)}
+                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+              />
+            )}
+
+            {/* Sidebar Drawer */}
+            <motion.aside 
+              initial={{ x: -280, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -280, opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 250 }}
+              className={`h-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-2xl border-r border-zinc-200 dark:border-zinc-800/80 flex flex-col z-50 shadow-2xl lg:shadow-none w-[280px] ${
+                isMobile ? "fixed inset-y-0 left-0" : "relative flex-shrink-0"
+              }`}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 mb-1">
+                <div className="flex items-center gap-2 px-2 cursor-pointer" onClick={() => { setActiveView('chat'); if(isMobile) toggleSidebar(false); }}>
+                  <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center shadow-md">
+                    <BrainCircuit className="w-4 h-4 text-white" />
+                  </div>
+                  <span className="font-semibold text-[15px] tracking-tight">ExamSolver</span>
                 </div>
-                <span className="font-semibold text-[15px] tracking-tight">ExamSolver</span>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition">
+                    {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                  </button>
+                  <button onClick={() => toggleSidebar(false)} className="p-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition" title="Fechar Menu">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-1">
-                <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition">
-                  {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                </button>
-                <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition md:hidden">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
 
             {/* Main Nav Actions */}
             <div className="px-3 space-y-1">
-              <button onClick={() => createNewChat()} className={`w-full flex items-center gap-3 px-3 py-2.5 text-[14px] font-medium rounded-xl transition ${activeView === 'chat' && currentConvId === null ? 'bg-white dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/50 dark:border-zinc-700/50' : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
+              <button onClick={() => { createNewChat(); if (isMobile) toggleSidebar(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 text-[14px] font-medium rounded-xl transition ${activeView === 'chat' && currentConvId === null ? 'bg-white dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/50 dark:border-zinc-700/50' : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
                 <PenSquare className="w-4 h-4 text-indigo-500" />
                 Iniciar novo
               </button>
-              <button onClick={() => { setActiveView('notebooks'); setNotebookFilter(null); }} className={`w-full flex items-center gap-3 px-3 py-2 text-[14px] font-medium rounded-xl transition ${activeView === 'notebooks' ? 'bg-white dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/50 dark:border-zinc-700/50' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
+              <button onClick={() => { setActiveView('notebooks'); setNotebookFilter(null); if (isMobile) toggleSidebar(false); }} className={`w-full flex items-center gap-3 px-3 py-2 text-[14px] font-medium rounded-xl transition ${activeView === 'notebooks' ? 'bg-white dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/50 dark:border-zinc-700/50' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
                 <Book className="w-4 h-4 text-emerald-500" /> Cadernos de estudo
               </button>
-              <button onClick={() => { setActiveView('images'); fetchGalleryImages(); }} className={`w-full flex items-center gap-3 px-3 py-2 text-[14px] font-medium rounded-xl transition ${activeView === 'images' ? 'bg-white dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/50 dark:border-zinc-700/50' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
+              <button onClick={() => { setActiveView('images'); fetchGalleryImages(); if (isMobile) toggleSidebar(false); }} className={`w-full flex items-center gap-3 px-3 py-2 text-[14px] font-medium rounded-xl transition ${activeView === 'images' ? 'bg-white dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/50 dark:border-zinc-700/50' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
                 <ImageIcon className="w-4 h-4 text-blue-500" /> Minhas Imagens
               </button>
             </div>
@@ -756,7 +796,7 @@ export default function ExamSolverGrand() {
                         </div>
                       ) : (
                         <button 
-                          onClick={() => { loadConversation(conv.id); if(window.innerWidth < 768) setIsSidebarOpen(false); }}
+                          onClick={() => { loadConversation(conv.id); if (isMobile) toggleSidebar(false); }}
                           className={`w-full text-left px-3 py-2 rounded-lg text-[13px] transition flex items-center justify-between ${activeView === 'chat' && currentConvId === conv.id ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 font-medium' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/40 dark:hover:bg-zinc-800/40'}`}
                         >
                           <div className="flex items-center gap-2 truncate pr-4">
@@ -825,7 +865,8 @@ export default function ExamSolverGrand() {
               </div>
             </div>
           </motion.aside>
-        )}
+        </>
+      )}
       </AnimatePresence>
 
       {/* ---------------- MAIN AREA ---------------- */}
@@ -839,8 +880,12 @@ export default function ExamSolverGrand() {
 
         {/* Top Navbar */}
         <header className="h-14 flex items-center px-4 relative z-20 shrink-0 border-b border-zinc-200/50 dark:border-zinc-800/50 bg-white/40 dark:bg-zinc-950/40 backdrop-blur-md">
-          {!isSidebarOpen && (
-            <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition">
+          {(!isSidebarOpen || isMobile) && (
+            <button 
+              onClick={() => toggleSidebar(true)} 
+              className="p-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition mr-2 flex items-center gap-1.5"
+              title="Abrir Menu Lateral"
+            >
               <Menu className="w-5 h-5" />
             </button>
           )}

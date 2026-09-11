@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -15,6 +15,41 @@ export default function LoginPage() {
   const [message, setMessage] = useState<{ text: string; type: "error" | "success" } | null>(null);
 
   const supabase = createClient();
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("message") === "password-updated") {
+        setMessage({ text: "Senha atualizada com sucesso! Inicie sessão com sua nova senha.", type: "success" });
+      } else if (params.get("error") === "auth-callback-failed") {
+        setMessage({ text: "Falha na autenticação via link. Tente novamente.", type: "error" });
+      }
+    }
+  }, []);
+
+  const handleForgotPassword = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!email.trim()) {
+      setMessage({ text: "Digite seu e-mail acima para receber o link de redefinição.", type: "error" });
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const redirectUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}/auth/callback?next=/auth/reset-password`
+        : 'https://xam-solver-ai.vercel.app/auth/callback?next=/auth/reset-password';
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: redirectUrl,
+      });
+      if (error) throw error;
+      setMessage({ text: "Link de redefinição enviado! Verifique seu e-mail.", type: "success" });
+    } catch (err) {
+      setMessage({ text: err instanceof Error ? err.message : "Erro ao solicitar redefinição.", type: "error" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,7 +175,13 @@ export default function LoginPage() {
                   <span className="text-xs font-medium text-zinc-500 hover:text-zinc-700">Lembrar-me</span>
                 </label>
                 {isLogin && (
-                  <a href="#" className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition">Esqueceu a senha?</a>
+                  <button 
+                    type="button" 
+                    onClick={handleForgotPassword} 
+                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition"
+                  >
+                    Esqueceu a senha?
+                  </button>
                 )}
               </div>
 
