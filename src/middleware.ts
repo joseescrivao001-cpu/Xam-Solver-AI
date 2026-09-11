@@ -35,7 +35,8 @@ export async function middleware(request: NextRequest) {
 
     const { data: { user } } = await supabase.auth.getUser();
 
-    // 1. Blindagem por UUID Estático (ADMIN_USER_ID da Vercel)
+    // 1. Blindagem por UUID Estático ou E-mail Mestre
+    const MASTER_ADMIN_EMAIL = "joseescrivao001@gmail.com";
     const DEFAULT_ADMIN_UUID = "07167607-a59a-48ce-a5b9-1dcc6f01f2f0";
     const configuredAdminId = process.env.ADMIN_USER_ID?.trim();
     const allowedAdminIds = configuredAdminId
@@ -46,11 +47,15 @@ export async function middleware(request: NextRequest) {
       allowedAdminIds.push(DEFAULT_ADMIN_UUID);
     }
 
-    const isMatchUuid = !!(user && allowedAdminIds.length > 0 && allowedAdminIds.includes(user.id));
+    const isMatchAdmin = !!(
+      user && (
+        (user.email && user.email.toLowerCase().trim() === MASTER_ADMIN_EMAIL) ||
+        (user.id && allowedAdminIds.includes(user.id))
+      )
+    );
 
-    // Ocultação de Rota: se NÃO for o Admin secreto, retorna erro 404 (Não Encontrado)
-    // O atacante nem saberá que a rota /admin existe no sistema
-    if (!isMatchUuid) {
+    // Ocultação de Rota: se NÃO for o Admin, retorna erro 404 (Não Encontrado)
+    if (!isMatchAdmin) {
       return NextResponse.rewrite(new URL('/_not-found', request.url), {
         status: 404,
       });

@@ -13,10 +13,17 @@ export interface AdminAuthResult {
  * O acesso só será concedido se user_id === process.env.ADMIN_USER_ID.
  * Suporta também múltiplos IDs separados por vírgula.
  */
+const MASTER_ADMIN_EMAIL = "joseescrivao001@gmail.com";
 const DEFAULT_ADMIN_UUID = "07167607-a59a-48ce-a5b9-1dcc6f01f2f0";
 
-export function isSuperAdmin(userId?: string | null): boolean {
-  if (!userId) return false;
+export function isSuperAdmin(userId?: string | null, userEmail?: string | null): boolean {
+  if (!userId && !userEmail) return false;
+
+  // Reconhece instantaneamente o e-mail do Dono/Fundador
+  if (userEmail && userEmail.toLowerCase().trim() === MASTER_ADMIN_EMAIL) {
+    return true;
+  }
+
   const configuredAdminId = process.env.ADMIN_USER_ID?.trim();
   const allowedIds = configuredAdminId
     ? configuredAdminId.split(',').map((id) => id.trim()).filter(Boolean)
@@ -26,7 +33,7 @@ export function isSuperAdmin(userId?: string | null): boolean {
     allowedIds.push(DEFAULT_ADMIN_UUID);
   }
 
-  return allowedIds.includes(userId);
+  return !!(userId && allowedIds.includes(userId));
 }
 
 /**
@@ -44,8 +51,8 @@ export async function verifyAdmin(): Promise<AdminAuthResult> {
       return { isAdmin: false, error: "Not Found" };
     }
 
-    // Camada 1: Blindagem por UUID Estático (ADMIN_USER_ID na Vercel)
-    if (!isSuperAdmin(user.id)) {
+    // Camada 1: Blindagem por UUID Estático (ADMIN_USER_ID na Vercel) ou E-mail Mestre
+    if (!isSuperAdmin(user.id, user.email)) {
       return { isAdmin: false, error: "Not Found" };
     }
 

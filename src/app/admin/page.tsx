@@ -17,9 +17,8 @@ export default async function AdminPage() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // 1. Blindagem de Acesso: Validação por UUID Estático (ADMIN_USER_ID da Vercel)
-  // Se o user_id não for idêntico ao ADMIN_USER_ID configurado, oculta totalmente com 404
-  if (!user || !isSuperAdmin(user.id)) {
+  // 1. Blindagem de Acesso: Validação por UUID Estático ou E-mail Mestre
+  if (!user || !isSuperAdmin(user.id, user.email)) {
     notFound();
   }
 
