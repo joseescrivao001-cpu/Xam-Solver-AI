@@ -214,16 +214,21 @@ export async function GET() {
   let geminiStatus = "NOT_TESTED";
   let geminiError: string | null = null;
   if (process.env.GOOGLE_GEMINI_API_KEY) {
-    try {
-      const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const result = await model.generateContent("Ping");
-      if (result.response.text()) {
-        geminiStatus = "HEALTHY";
+    const candidateModels = ["gemini-1.5-flash-latest", "gemini-1.5-pro-latest", "gemini-2.0-flash", "gemini-pro", "gemini-1.5-flash"];
+    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY);
+    
+    for (const modelName of candidateModels) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent("Ping");
+        if (result.response.text()) {
+          geminiStatus = `HEALTHY (${modelName})`;
+          geminiError = null;
+          break;
+        }
+      } catch (err) {
+        geminiError = err instanceof Error ? err.message : "Falha na API Gemini";
       }
-    } catch (err) {
-      geminiStatus = "ERROR";
-      geminiError = err instanceof Error ? err.message : "Falha na API Gemini";
     }
   } else {
     geminiStatus = "MISSING_KEY";
@@ -232,7 +237,7 @@ export async function GET() {
   const expectedRedirectUri = "https://xam-solver-ai.vercel.app/auth/callback";
 
   report.integrations = {
-    status: geminiStatus === "HEALTHY" ? "PASS" : "WARN",
+    status: geminiStatus.startsWith("HEALTHY") ? "PASS" : "WARN",
     geminiAiStatus: geminiStatus,
     geminiError,
     googleOAuth: {

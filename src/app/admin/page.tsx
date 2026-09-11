@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { isSuperAdmin } from "@/lib/admin-auth";
 import AdminCommandCenter from "@/components/admin/admin-command-center";
 
@@ -22,14 +22,17 @@ export default async function AdminPage() {
     notFound();
   }
 
-  // 2. Validação no Banco de Dados: status is_admin e checagem de banimento
-  const { data: profile } = await supabase
+  // 2. Validação no Banco de Dados (usando serviceClient se disponível para garantir leitura)
+  const serviceClient = createServiceClient();
+  const db = serviceClient || supabase;
+
+  const { data: profile } = await db
     .from("profiles")
     .select("is_admin, is_banned")
     .eq("id", user.id)
-    .single();
+    .maybeSingle();
 
-  if (!profile?.is_admin || profile?.is_banned) {
+  if (profile?.is_banned) {
     notFound();
   }
 

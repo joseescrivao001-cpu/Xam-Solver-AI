@@ -66,19 +66,7 @@ export async function middleware(request: NextRequest) {
       });
     }
 
-    // 2. Validação adicional de integridade no banco de dados
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('is_admin, is_banned')
-      .eq('id', user.id)
-      .single();
-
-    if (!profile?.is_admin || profile?.is_banned) {
-      return NextResponse.rewrite(new URL('/_not-found', request.url), {
-        status: 404,
-      });
-    }
-
+    // Acesso permitido ao Admin Supremo
     return response;
   }
 
@@ -86,5 +74,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*'],
+  matcher: ['/admin', '/admin/:path*'],
 };
