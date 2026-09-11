@@ -22,6 +22,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useTheme } from "next-themes";
 import useDrivePicker from 'react-google-drive-picker';
+import PricingModal from "@/components/pricing-modal";
 
 type Message = {
   id: string;
@@ -60,6 +61,8 @@ export default function ExamSolverGrand() {
   const [currentConvId, setCurrentConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [credits, setCredits] = useState<number>(0);
+  const [userPlan, setUserPlan] = useState<'free' | 'pro' | 'ultra' | 'premium'>('pro');
+  const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [user, setUser] = useState<{ id: string, email?: string } | null>(null);
   const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([]);
   
@@ -163,8 +166,11 @@ export default function ExamSolverGrand() {
       }
       setUser({ id: user.id, email: user.email });
 
-      const { data: profile } = await supabase.from("profiles").select("credits_balance").eq("id", user.id).single();
-      if (profile) setCredits(profile.credits_balance);
+      const { data: profile } = await supabase.from("profiles").select("credits_balance, plan_type").eq("id", user.id).single();
+      if (profile) {
+        if (profile.credits_balance !== undefined && profile.credits_balance !== null) setCredits(profile.credits_balance);
+        if (profile.plan_type) setUserPlan(profile.plan_type as 'free' | 'pro' | 'ultra' | 'premium');
+      }
 
       const { data: convs } = await supabase.from("conversations").select("*").order("created_at", { ascending: false });
       if (convs) setConversations(convs);
@@ -397,10 +403,11 @@ export default function ExamSolverGrand() {
   const refreshCredits = async () => {
     if (!user) return;
     setIsRefreshingCredits(true);
-    const { data: profile } = await supabase.from("profiles").select("credits_balance").eq("id", user.id).single();
+    const { data: profile } = await supabase.from("profiles").select("credits_balance, plan_type").eq("id", user.id).single();
     if (profile) {
-      setCredits(profile.credits_balance);
-      setSettingsMessage("Saldo de créditos sincronizado com sucesso!");
+      if (profile.credits_balance !== undefined && profile.credits_balance !== null) setCredits(profile.credits_balance);
+      if (profile.plan_type) setUserPlan(profile.plan_type as 'free' | 'pro' | 'ultra' | 'premium');
+      setSettingsMessage("Saldo de créditos e plano sincronizados com sucesso!");
     }
     setIsRefreshingCredits(false);
   };
@@ -558,7 +565,8 @@ export default function ExamSolverGrand() {
         setTimeout(() => router.push("/login"), 3000);
         return;
       }
-      return setError("Créditos insuficientes para nova resolução.");
+      setIsPricingOpen(true);
+      return setError("Créditos insuficientes. Escolha um plano para recarregar seus créditos instantaneamente.");
     }
 
     setIsStreaming(true);
@@ -602,11 +610,11 @@ export default function ExamSolverGrand() {
     // Save image to local gallery cache immediately
     if (currentBase64) {
       try {
-        const key = `user_images_${user?.id || "guest"}`;
-        const cached = localStorage.getItem(key);
-        const list: GalleryImage[] = cached ? JSON.parse(cached) : [];
+        const key = `exam_solver_gallery_${user?.id || 'guest'}`;
+        const saved = localStorage.getItem(key);
+        const list: GalleryImage[] = saved ? JSON.parse(saved) : [];
         const newImg: GalleryImage = {
-          id: Date.now().toString(),
+          id: "img-" + Date.now(),
           url: currentBase64,
           created_at: new Date().toISOString(),
           conversation_id: activeConvId || ""
@@ -628,7 +636,14 @@ export default function ExamSolverGrand() {
 
     try {
       const res = await fetch("/api/chat", { method: "POST", body: formData });
-      if (!res.ok) throw new Error(await res.text() || "Erro no servidor.");
+      if (!res.ok) {
+        const errorText = await res.text();
+        if (res.status === 403 || errorText.includes("UPGRADE_REQUIRED") || errorText.toLowerCase().includes("plano ultra")) {
+          setIsPricingOpen(true);
+          throw new Error("Este recurso exige o Plano Ultra ou Premium. Faça o upgrade para desbloquear!");
+        }
+        throw new Error(errorText || "Erro no servidor.");
+      }
       
       const reader = res.body?.getReader();
       if (!reader) throw new Error("Erro de stream.");
@@ -828,14 +843,16 @@ export default function ExamSolverGrand() {
 
             {/* Bottom Profile / Settings Trigger */}
             <div className="p-3 border-t border-zinc-200 dark:border-zinc-800/60 space-y-2">
-              <div onClick={() => setIsSettingsOpen(true)} className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-3 text-white shadow-lg relative overflow-hidden group cursor-pointer">
+              <div onClick={() => setIsPricingOpen(true)} className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-xl p-3 text-white shadow-lg relative overflow-hidden group cursor-pointer">
                 <div className="absolute top-0 right-0 w-16 h-16 bg-white/20 blur-2xl group-hover:scale-150 transition-transform duration-500" />
                 <div className="flex items-center justify-between relative z-10">
                   <div>
-                    <p className="text-[13px] font-semibold flex items-center gap-1"><Sparkles className="w-3.5 h-3.5"/> ExamSolver Pro</p>
+                    <p className="text-[13px] font-semibold flex items-center gap-1"><Sparkles className="w-3.5 h-3.5"/> Plano {userPlan.toUpperCase()}</p>
                     <p className="text-[11px] text-blue-100 mt-0.5">{credits} Créditos {user ? 'ativos' : 'de teste'}</p>
                   </div>
-                  <Button size="sm" onClick={(e) => { e.stopPropagation(); setIsSettingsOpen(true); }} className="bg-white text-blue-600 hover:bg-zinc-100 h-7 text-xs rounded-lg px-3">Upgrade</Button>
+                  <Button size="sm" onClick={(e) => { e.stopPropagation(); setIsPricingOpen(true); }} className="bg-white text-indigo-600 hover:bg-zinc-100 h-7 text-xs rounded-lg px-3 font-semibold shadow-sm">
+                    {userPlan === 'premium' ? 'Planos' : 'Upgrade'}
+                  </Button>
                 </div>
               </div>
 
@@ -902,9 +919,13 @@ export default function ExamSolverGrand() {
           )}
 
           <div className="ml-auto flex items-center gap-3">
-            <button onClick={() => setIsSettingsOpen(true)} className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
+            <button onClick={() => setIsPricingOpen(true)} className="text-xs text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition shadow-xs">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>{credits} Créditos</span>
+              <span>{credits} Créditos ({userPlan.toUpperCase()})</span>
+            </button>
+            <button onClick={() => setIsPricingOpen(true)} className="hidden sm:inline-flex text-xs font-semibold px-3 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-sm transition items-center gap-1.5 cursor-pointer">
+              <Sparkles className="w-3 h-3" />
+              Upgrade
             </button>
             <span className="text-[13px] font-medium text-zinc-400 flex items-center gap-1">
               <ShieldCheck className="w-4 h-4 text-emerald-500" /> Conexão Blindada
@@ -1180,9 +1201,40 @@ export default function ExamSolverGrand() {
                           <ChevronDown className="w-3.5 h-3.5" />
                         </button>
                         {isModelDropdownOpen && (
-                          <div className="absolute bottom-full right-0 mb-2 w-44 bg-white dark:bg-[#252528] border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden py-1 z-50">
-                            <button onClick={() => { setModelMode("gemini-1.5-flash"); setIsModelDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700">Instant (Flash)</button>
-                            <button onClick={() => { setModelMode("gemini-1.5-pro"); setIsModelDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700">Pro (Raciocínio)</button>
+                          <div className="absolute bottom-full right-0 mb-2 w-52 bg-white dark:bg-[#252528] border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden py-1 z-50">
+                            <button 
+                              onClick={() => { setModelMode("gemini-1.5-flash"); setIsModelDropdownOpen(false); }} 
+                              className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 flex items-center justify-between"
+                            >
+                              <div>
+                                <p className="font-medium text-xs">Instant (Flash)</p>
+                                <p className="text-[10px] text-zinc-400">Rápido & Direto</p>
+                              </div>
+                              {modelMode === "gemini-1.5-flash" && <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                            </button>
+                            <button 
+                              onClick={() => { 
+                                if (userPlan !== 'ultra' && userPlan !== 'premium') {
+                                  setIsPricingOpen(true);
+                                  setError("O modelo Pro (Raciocínio Profundo) exige o Plano Ultra ou Premium.");
+                                } else {
+                                  setModelMode("gemini-1.5-pro"); 
+                                }
+                                setIsModelDropdownOpen(false); 
+                              }} 
+                              className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800"
+                            >
+                              <div>
+                                <p className="font-medium text-xs flex items-center gap-1.5">
+                                  Pro (Raciocínio)
+                                  {userPlan !== 'ultra' && userPlan !== 'premium' && (
+                                    <span className="text-[9px] bg-violet-500/20 text-violet-400 font-bold px-1.5 py-0.5 rounded border border-violet-500/30 uppercase">Ultra</span>
+                                  )}
+                                </p>
+                                <p className="text-[10px] text-zinc-400">Passo a passo avançado</p>
+                              </div>
+                              {modelMode === "gemini-1.5-pro" && <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                            </button>
                           </div>
                         )}
                       </div>
@@ -1249,12 +1301,21 @@ export default function ExamSolverGrand() {
                     </div>
                     <div>
                       <p className="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">{user?.email || "Convidado"}</p>
-                      <p className="text-xs text-zinc-500">{user ? "Plano ExamSolver Pro" : "Acesso Convidado"}</p>
+                      <p className="text-xs text-zinc-500">{user ? `Plano ${userPlan.toUpperCase()}` : "Acesso Convidado"}</p>
                     </div>
                   </div>
-                  <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-500 uppercase tracking-wider">
-                    {user ? "Ativo" : "Demo"}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-500 uppercase tracking-wider">
+                      {userPlan.toUpperCase()}
+                    </span>
+                    <Button 
+                      size="sm" 
+                      onClick={() => setIsPricingOpen(true)}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-xl h-8 px-3"
+                    >
+                      Planos
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Credits Balance Card */}
@@ -1263,15 +1324,25 @@ export default function ExamSolverGrand() {
                     <span className="text-xs text-zinc-500 uppercase font-semibold tracking-wider">Saldo de Créditos</span>
                     <p className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 mt-0.5">{credits} Créditos</p>
                   </div>
-                  <Button 
-                    onClick={refreshCredits} 
-                    variant="outline" 
-                    size="sm" 
-                    disabled={isRefreshingCredits || !user}
-                    className="rounded-xl flex items-center gap-1.5 text-xs"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingCredits ? 'animate-spin' : ''}`} /> Sincronizar
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      onClick={() => setIsPricingOpen(true)}
+                      variant="default"
+                      size="sm"
+                      className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs h-8 px-3"
+                    >
+                      Recarregar
+                    </Button>
+                    <Button 
+                      onClick={refreshCredits} 
+                      variant="outline" 
+                      size="sm" 
+                      disabled={isRefreshingCredits || !user}
+                      className="rounded-xl flex items-center gap-1.5 text-xs h-8"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingCredits ? 'animate-spin' : ''}`} /> Sincronizar
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Preferences */}
@@ -1542,6 +1613,15 @@ export default function ExamSolverGrand() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* ---------------- MODAL: PRICING & UPGRADE MONETIZATION ---------------- */}
+      <PricingModal 
+        isOpen={isPricingOpen} 
+        onClose={() => setIsPricingOpen(false)} 
+        currentPlan={userPlan} 
+        userEmail={user?.email} 
+        onPlanUpdated={refreshCredits} 
+      />
 
     </div>
   );

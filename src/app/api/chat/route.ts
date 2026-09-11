@@ -59,7 +59,7 @@ export async function POST(req: Request) {
     if (!isGuest) {
       const { data: p } = await supabase
         .from("profiles")
-        .select("credits_balance")
+        .select("credits_balance, plan_type")
         .eq("id", user?.id)
         .single();
       profile = p;
@@ -73,6 +73,19 @@ export async function POST(req: Request) {
     const conversationId = formData.get("conversation_id") as string;
     const text = formData.get("text") as string;
     const file = formData.get("file") as File | null;
+    const requestedModel = (formData.get("model") as string) || "gemini-1.5-flash";
+
+    // Regra de Negócio: Gemini Pro exclusivo para planos Ultra e Premium
+    const userPlan = profile?.plan_type || 'pro';
+    if (requestedModel === 'gemini-1.5-pro' && userPlan !== 'ultra' && userPlan !== 'premium') {
+      return new Response(JSON.stringify({
+        error: "UPGRADE_REQUIRED",
+        message: "O modelo Gemini Pro com raciocínio matemático avançado é exclusivo dos planos Ultra e Premium."
+      }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
     if (!file && !text) {
       return new Response(JSON.stringify({ error: "Forneça uma imagem ou texto." }), { status: 400, headers: { 'Content-Type': 'application/json' } });

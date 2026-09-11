@@ -40,7 +40,7 @@ export async function POST(req: Request) {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("credits_balance")
+      .select("credits_balance, plan_type")
       .eq("id", user.id)
       .single();
 
@@ -52,6 +52,17 @@ export async function POST(req: Request) {
     const mode = formData.get("mode") as string;
     const text = formData.get("text") as string;
     const file = formData.get("file") as File | null;
+
+    const userPlan = profile.plan_type || 'pro';
+    if ((mode === 'dificil' || mode === 'pro') && userPlan !== 'ultra' && userPlan !== 'premium') {
+      return new Response(JSON.stringify({
+        error: "UPGRADE_REQUIRED",
+        message: "O modo Difícil / Raciocínio Avançado é exclusivo dos planos Ultra e Premium."
+      }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
     if (!file && !text) {
       return new Response(JSON.stringify({ error: "Forneça uma imagem ou texto." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
