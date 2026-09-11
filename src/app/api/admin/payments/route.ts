@@ -71,9 +71,10 @@ export async function POST(request: Request) {
 
     if (action === "approve") {
       const plan = proof.plan_type;
-      let creditsToAdd = 1000;
-      if (plan === "ultra") creditsToAdd = 1000000;
-      if (plan === "premium") creditsToAdd = 999999;
+      let creditsToAdd = 2000;
+      if (plan === "pro") creditsToAdd = 2000;
+      if (plan === "ultra") creditsToAdd = 10000;
+      if (plan === "premium") creditsToAdd = 999999999;
 
       // 1. Atualizar Perfil do Usuário
       const { data: profile } = await supabase
@@ -83,7 +84,7 @@ export async function POST(request: Request) {
         .single();
 
       const currentBalance = profile?.credits_balance || 0;
-      const newBalance = currentBalance + creditsToAdd;
+      const newBalance = plan === "premium" ? 999999999 : currentBalance + creditsToAdd;
 
       const { error: updateProfileErr } = await supabase
         .from("profiles")

@@ -11,7 +11,7 @@ import {
   Check, Sun, Moon, User, 
   Book, Sparkles, LogOut, ChevronDown, PenSquare, ArrowUp, Mic, ShieldCheck,
   Paperclip, Cloud, Camera, Search, Settings, Folder, FolderPlus,
-  RefreshCw, Key, Activity, Upload, Loader2
+  RefreshCw, Key, Activity, Upload, Loader2, Crown, Zap
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -921,14 +921,39 @@ export default function ExamSolverGrand() {
 
             {/* Bottom Profile / Settings Trigger */}
             <div className="p-3 border-t border-zinc-200 dark:border-zinc-800/60 space-y-2">
-              <div onClick={() => setIsPricingOpen(true)} className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-xl p-3 text-white shadow-lg relative overflow-hidden group cursor-pointer">
-                <div className="absolute top-0 right-0 w-16 h-16 bg-white/20 blur-2xl group-hover:scale-150 transition-transform duration-500" />
-                <div className="flex items-center justify-between relative z-10">
-                  <div>
-                    <p className="text-[13px] font-semibold flex items-center gap-1"><Sparkles className="w-3.5 h-3.5"/> Plano {userPlan.toUpperCase()}</p>
-                    <p className="text-[11px] text-blue-100 mt-0.5">{credits} Créditos {user ? 'ativos' : 'de teste'}</p>
+              <div 
+                onClick={() => setIsPricingOpen(true)} 
+                className={`rounded-2xl p-3.5 text-white shadow-lg relative overflow-hidden group cursor-pointer transition-all hover:scale-[1.01] ${
+                  userPlan === 'premium' 
+                    ? 'bg-gradient-to-r from-amber-600 via-yellow-600 to-amber-700 border border-amber-400/30' 
+                    : userPlan === 'pro'
+                    ? 'bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 border border-indigo-400/30'
+                    : 'bg-zinc-800/80 border border-zinc-700/60'
+                }`}
+              >
+                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 blur-xl group-hover:scale-150 transition-transform duration-500 pointer-events-none" />
+                <div className="flex items-center justify-between relative z-10 gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-bold flex items-center gap-1 truncate">
+                      {userPlan === 'premium' ? (
+                        <><Crown className="w-3.5 h-3.5 text-amber-200 shrink-0"/> VIP Ilimitado</>
+                      ) : userPlan === 'pro' ? (
+                        <><Sparkles className="w-3.5 h-3.5 text-blue-200 shrink-0"/> Plano Pro</>
+                      ) : (
+                        <><Zap className="w-3.5 h-3.5 text-zinc-300 shrink-0"/> Plano Free</>
+                      )}
+                    </p>
+                    <p className="text-[11px] text-white/80 mt-0.5 truncate">
+                      {userPlan === 'premium' 
+                        ? 'Créditos Ilimitados' 
+                        : `${credits.toLocaleString("pt-AO")} Créditos ${user ? 'ativos' : 'de teste'}`}
+                    </p>
                   </div>
-                  <Button size="sm" onClick={(e) => { e.stopPropagation(); setIsPricingOpen(true); }} className="bg-white text-indigo-600 hover:bg-zinc-100 h-7 text-xs rounded-lg px-3 font-semibold shadow-sm">
+                  <Button 
+                    size="sm" 
+                    onClick={(e) => { e.stopPropagation(); setIsPricingOpen(true); }} 
+                    className="bg-white text-zinc-900 hover:bg-zinc-100 h-7 text-xs rounded-lg px-2.5 font-bold shadow-sm shrink-0"
+                  >
                     {userPlan === 'premium' ? 'Planos' : 'Upgrade'}
                   </Button>
                 </div>
@@ -945,7 +970,7 @@ export default function ExamSolverGrand() {
               )}
 
               <div onClick={() => user ? setIsSettingsOpen(true) : router.push("/login")} className="flex items-center justify-between px-2 py-2 mt-2 cursor-pointer hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 rounded-xl transition">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div 
                     onClick={(e) => {
                       if (user) {
@@ -964,11 +989,11 @@ export default function ExamSolverGrand() {
                       </div>
                     )}
                   </div>
-                  <div className="overflow-hidden max-w-[120px]">
+                  <div className="overflow-hidden min-w-0 flex-1">
                     {user ? (
                       <>
                         <p className="text-[13px] font-medium text-zinc-900 dark:text-zinc-200 truncate">{userFullName || user?.email?.split('@')[0] || "Estudante"}</p>
-                        <p className="text-[11px] text-zinc-500 truncate">{user?.email}</p>
+                        <p className="text-[11px] text-zinc-500 truncate" title={user?.email}>{user?.email}</p>
                       </>
                     ) : (
                       <p className="text-[13px] font-medium text-zinc-900 dark:text-zinc-200 truncate">Iniciar sessão</p>
@@ -976,7 +1001,7 @@ export default function ExamSolverGrand() {
                   </div>
                 </div>
                 {user ? (
-                  <button onClick={(e) => { e.stopPropagation(); setIsSettingsOpen(true); }} className="p-1.5 text-zinc-400 hover:text-indigo-500 rounded-lg transition" title="Configurações de Conta">
+                  <button onClick={(e) => { e.stopPropagation(); setIsSettingsOpen(true); }} className="p-1.5 text-zinc-400 hover:text-indigo-500 rounded-lg transition shrink-0" title="Configurações de Conta">
                     <Settings className="w-4 h-4" />
                   </button>
                 ) : (
@@ -984,13 +1009,15 @@ export default function ExamSolverGrand() {
                 )}
               </div>
 
-              <Link
-                href="/system-check"
-                className="w-full flex items-center justify-center gap-1.5 py-1 text-[11px] text-zinc-500 hover:text-zinc-300 transition"
-              >
-                <Activity className="w-3 h-3 text-indigo-400" />
-                Diagnóstico do Sistema
-              </Link>
+              {isAdmin && (
+                <Link
+                  href="/system-check"
+                  className="w-full flex items-center justify-center gap-1.5 py-1 text-[11px] text-zinc-500 hover:text-zinc-300 transition"
+                >
+                  <Activity className="w-3 h-3 text-indigo-400" />
+                  Diagnóstico do Sistema
+                </Link>
+              )}
             </div>
           </motion.aside>
         </>
@@ -1032,12 +1059,20 @@ export default function ExamSolverGrand() {
           <div className="ml-auto flex items-center gap-3">
             <button onClick={() => setIsPricingOpen(true)} className="text-xs text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition shadow-xs">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>{credits} Créditos ({userPlan.toUpperCase()})</span>
+              <span>
+                {userPlan === 'premium' ? '✨ Créditos Ilimitados (PREMIUM)' : `${credits.toLocaleString("pt-AO")} Créditos (${userPlan.toUpperCase()})`}
+              </span>
             </button>
-            <button onClick={() => setIsPricingOpen(true)} className="hidden sm:inline-flex text-xs font-semibold px-3 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-sm transition items-center gap-1.5 cursor-pointer">
-              <Sparkles className="w-3 h-3" />
-              Upgrade
-            </button>
+            {userPlan !== 'premium' ? (
+              <button onClick={() => setIsPricingOpen(true)} className="hidden sm:inline-flex text-xs font-semibold px-3 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-sm transition items-center gap-1.5 cursor-pointer">
+                <Sparkles className="w-3 h-3" />
+                Upgrade
+              </button>
+            ) : (
+              <span className="hidden sm:inline-flex text-xs font-bold px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 items-center gap-1">
+                <Crown className="w-3.5 h-3.5" /> VIP Ilimitado
+              </span>
+            )}
             <span className="text-[13px] font-medium text-zinc-400 flex items-center gap-1">
               <ShieldCheck className="w-4 h-4 text-emerald-500" /> Conexão Blindada
             </span>
@@ -1457,17 +1492,33 @@ export default function ExamSolverGrand() {
                 <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700/50 flex items-center justify-between">
                   <div>
                     <span className="text-xs text-zinc-500 uppercase font-semibold tracking-wider">Saldo de Créditos</span>
-                    <p className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 mt-0.5">{credits} Créditos</p>
+                    <p className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 mt-0.5">
+                      {userPlan === 'premium' ? 'Ilimitado' : `${credits.toLocaleString("pt-AO")} Créditos`}
+                    </p>
+                    {userPlan === 'premium' && (
+                      <p className="text-[11px] text-amber-500 font-medium">Acesso VIP irrestrito ativo</p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button 
-                      onClick={() => setIsPricingOpen(true)}
-                      variant="default"
-                      size="sm"
-                      className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs h-8 px-3"
-                    >
-                      Recarregar
-                    </Button>
+                    {userPlan !== 'premium' ? (
+                      <Button 
+                        onClick={() => setIsPricingOpen(true)}
+                        variant="default"
+                        size="sm"
+                        className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs h-8 px-3"
+                      >
+                        Recarregar
+                      </Button>
+                    ) : (
+                      <Button 
+                        onClick={() => setIsPricingOpen(true)}
+                        variant="outline"
+                        size="sm"
+                        className="border-amber-500/30 text-amber-400 bg-amber-500/10 rounded-xl text-xs h-8 px-3"
+                      >
+                        Planos VIP
+                      </Button>
+                    )}
                     <Button 
                       onClick={refreshCredits} 
                       variant="outline" 

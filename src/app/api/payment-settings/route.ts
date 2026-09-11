@@ -43,8 +43,10 @@ export async function GET() {
     }
 
     // Calcular valores dos planos em Kwanza em tempo real
+    const proUsd = 10;
     const ultraUsd = 19;
     const premiumUsd = 39;
+    const proAoa = Math.round(proUsd * liveRate);
     const ultraAoa = Math.round(ultraUsd * liveRate);
     const premiumAoa = Math.round(premiumUsd * liveRate);
 
@@ -56,15 +58,23 @@ export async function GET() {
       notes: notes,
       usd_to_aoa_rate: liveRate,
       plans: {
+        pro: {
+          usd: proUsd,
+          aoa: proAoa,
+          formatted_aoa: proAoa.toLocaleString("pt-AO") + " Kz",
+          credits: "2.000 Créditos"
+        },
         ultra: {
           usd: ultraUsd,
           aoa: ultraAoa,
-          formatted_aoa: ultraAoa.toLocaleString("pt-AO") + " Kz"
+          formatted_aoa: ultraAoa.toLocaleString("pt-AO") + " Kz",
+          credits: "10.000 Créditos"
         },
         premium: {
           usd: premiumUsd,
           aoa: premiumAoa,
-          formatted_aoa: premiumAoa.toLocaleString("pt-AO") + " Kz"
+          formatted_aoa: premiumAoa.toLocaleString("pt-AO") + " Kz",
+          credits: "Ilimitado"
         }
       }
     });
@@ -77,8 +87,9 @@ export async function GET() {
       iban: "",
       usd_to_aoa_rate: 950,
       plans: {
-        ultra: { usd: 19, aoa: 19000, formatted_aoa: "19.000 Kz" },
-        premium: { usd: 39, aoa: 39000, formatted_aoa: "39.000 Kz" }
+        pro: { usd: 10, aoa: 9500, formatted_aoa: "9.500 Kz", credits: "2.000 Créditos" },
+        ultra: { usd: 19, aoa: 19000, formatted_aoa: "19.000 Kz", credits: "10.000 Créditos" },
+        premium: { usd: 39, aoa: 39000, formatted_aoa: "39.000 Kz", credits: "Ilimitado" }
       }
     });
   }

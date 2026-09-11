@@ -14,18 +14,31 @@ export async function GET() {
     const serviceClient = createServiceClient();
     const supabase = serviceClient || createClient();
 
-    // 1. Total de Usuários
+    // 1. Total de Usuários, Alunos e Staff
     const { count: totalUsers, error: usersError } = await supabase
       .from("profiles")
       .select("*", { count: "exact", head: true });
 
     if (usersError) console.warn("[ADMIN_STATS] Erro ao contar usuários:", usersError);
 
-    // 2. Usuários Ativos nas últimas 24 horas
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { count: activeUsers } = await supabase
+    // Contar Alunos / Estudantes (usuários que NÃO são administradores)
+    const { count: totalStudents } = await supabase
       .from("profiles")
       .select("*", { count: "exact", head: true })
+      .or("is_admin.is.null,is_admin.eq.false");
+
+    // Contar Equipe / Staff (usuários administradores)
+    const { count: totalStaff } = await supabase
+      .from("profiles")
+      .select("*", { count: "exact", head: true })
+      .eq("is_admin", true);
+
+    // 2. Alunos Ativos nas últimas 24 horas
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { count: activeStudents } = await supabase
+      .from("profiles")
+      .select("*", { count: "exact", head: true })
+      .or("is_admin.is.null,is_admin.eq.false")
       .gte("last_seen_at", oneDayAgo);
 
     // 3. Comprovativos de Pagamento
@@ -58,9 +71,10 @@ export async function GET() {
     return NextResponse.json({
       metrics: {
         totalRevenueKz: totalRevenueKz.toLocaleString("pt-AO") + " Kz",
-        totalRevenueRaw: totalRevenueKz,
         totalUsers: totalUsers || 0,
-        activeUsers24h: activeUsers || (totalUsers ? Math.max(1, Math.round(totalUsers * 0.4)) : 0),
+        totalStudents: totalStudents || 0,
+        totalStaff: totalStaff || 0,
+        activeUsers24h: activeStudents || (totalStudents ? Math.max(1, Math.round(totalStudents * 0.4)) : 0),
         pendingProofs: pendingCount,
         approvedProofs: approvedCount,
         totalConversations: totalChats || 0,

@@ -8,7 +8,8 @@ import {
   CheckCircle2, XCircle, AlertCircle, RefreshCw, 
   Search, Eye, ArrowLeft, ArrowRight,
   Sparkles, Check, X,
-  FileText, Activity, Settings, Smartphone
+  FileText, Activity, Settings, Smartphone,
+  User, Crown, ShieldCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -30,6 +31,9 @@ interface ProofItem {
 
 interface UserProfile {
   id: string;
+  email?: string | null;
+  full_name?: string | null;
+  avatar_url?: string | null;
   plan_type: string;
   credits_balance: number;
   is_admin: boolean;
@@ -51,6 +55,8 @@ interface LogItem {
 interface StatsData {
   totalRevenueKz: string;
   totalUsers: number;
+  totalStudents?: number;
+  totalStaff?: number;
   activeUsers24h: number;
   pendingProofs: number;
   approvedProofs: number;
@@ -73,6 +79,7 @@ export default function AdminCommandCenter() {
   const [proofSearch, setProofSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [userPlanFilter, setUserPlanFilter] = useState<string>("all");
+  const [userRoleFilter, setUserRoleFilter] = useState<"all" | "students" | "staff">("all");
 
   // Modais de Ação
   const [selectedProof, setSelectedProof] = useState<ProofItem | null>(null);
@@ -81,7 +88,7 @@ export default function AdminCommandCenter() {
 
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [editUserCredits, setEditUserCredits] = useState<number>(0);
-  const [editUserPlan, setEditUserPlan] = useState<string>("pro");
+  const [editUserPlan, setEditUserPlan] = useState<string>("free");
 
   // Configurações Bancárias Dinâmicas
   const [bankSettings, setBankSettings] = useState({
@@ -124,7 +131,7 @@ export default function AdminCommandCenter() {
   // 3. Carregar Usuários
   const loadUsers = useCallback(async () => {
     try {
-      const url = `/api/admin/users?plan=${userPlanFilter}&search=${encodeURIComponent(userSearch)}`;
+      const url = `/api/admin/users?role=${userRoleFilter}&plan=${userPlanFilter}&search=${encodeURIComponent(userSearch)}`;
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
@@ -133,7 +140,7 @@ export default function AdminCommandCenter() {
     } catch (err) {
       console.warn("Erro ao carregar usuários:", err);
     }
-  }, [userPlanFilter, userSearch]);
+  }, [userRoleFilter, userPlanFilter, userSearch]);
 
   // 4. Carregar Logs
   const loadLogs = useCallback(async () => {
@@ -398,20 +405,20 @@ export default function AdminCommandCenter() {
 
               <div className="p-5 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 backdrop-blur-xl relative overflow-hidden group">
                 <div className="flex items-center justify-between text-zinc-400 mb-2">
-                  <span className="text-xs font-medium uppercase tracking-wider">Usuários Registrados</span>
+                  <span className="text-xs font-medium uppercase tracking-wider">Estudantes / Alunos</span>
                   <Users className="w-4 h-4 text-indigo-400" />
                 </div>
-                <p className="text-2xl font-black text-white">{stats?.totalUsers || 0}</p>
-                <p className="text-[11px] text-indigo-400 mt-1">Base total de estudantes</p>
+                <p className="text-2xl font-black text-white">{stats?.totalStudents ?? (stats?.totalUsers || 0)}</p>
+                <p className="text-[11px] text-indigo-400 mt-1">Base de estudantes cadastrados</p>
               </div>
 
               <div className="p-5 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 backdrop-blur-xl relative overflow-hidden group">
                 <div className="flex items-center justify-between text-zinc-400 mb-2">
-                  <span className="text-xs font-medium uppercase tracking-wider">Alunos Ativos (24h)</span>
-                  <Activity className="w-4 h-4 text-violet-400" />
+                  <span className="text-xs font-medium uppercase tracking-wider">Equipe & Staff</span>
+                  <ShieldCheck className="w-4 h-4 text-violet-400" />
                 </div>
-                <p className="text-2xl font-black text-white">{stats?.activeUsers24h || 0}</p>
-                <p className="text-[11px] text-violet-400 mt-1">Estudando na plataforma hoje</p>
+                <p className="text-2xl font-black text-white">{stats?.totalStaff ?? 1}</p>
+                <p className="text-[11px] text-violet-400 mt-1">Administradores do sistema</p>
               </div>
 
               <div className="p-5 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 backdrop-blur-xl relative overflow-hidden group">
@@ -609,30 +616,61 @@ export default function AdminCommandCenter() {
         {/* ---------------- 3. ABA: GESTÃO DE USUÁRIOS ---------------- */}
         {activeTab === "users" && (
           <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                {["all", "pro", "ultra", "premium"].map((pl) => (
+            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Role Filter Tabs */}
+                <div className="flex items-center bg-zinc-900 p-1 rounded-xl border border-zinc-800">
                   <button
-                    key={pl}
-                    onClick={() => setUserPlanFilter(pl)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold uppercase transition cursor-pointer ${
-                      userPlanFilter === pl
-                        ? "bg-zinc-800 text-white border border-zinc-700"
-                        : "text-zinc-500 hover:text-zinc-300"
+                    onClick={() => setUserRoleFilter("all")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                      userRoleFilter === "all" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"
                     }`}
                   >
-                    {pl === "all" ? "Todos os Planos" : pl}
+                    Todos ({stats?.totalUsers || users.length})
                   </button>
-                ))}
+                  <button
+                    onClick={() => setUserRoleFilter("students")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                      userRoleFilter === "students" ? "bg-indigo-600 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"
+                    }`}
+                  >
+                    Alunos / Estudantes ({stats?.totalStudents ?? "-"})
+                  </button>
+                  <button
+                    onClick={() => setUserRoleFilter("staff")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                      userRoleFilter === "staff" ? "bg-amber-600 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"
+                    }`}
+                  >
+                    Equipe & Staff ({stats?.totalStaff ?? "-"})
+                  </button>
+                </div>
+
+                {/* Plan filter */}
+                <div className="flex items-center gap-1">
+                  {["all", "free", "pro", "ultra", "premium"].map((pl) => (
+                    <button
+                      key={pl}
+                      onClick={() => setUserPlanFilter(pl)}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold uppercase transition cursor-pointer ${
+                        userPlanFilter === pl
+                          ? "bg-zinc-800 text-white border border-zinc-700"
+                          : "text-zinc-500 hover:text-zinc-300"
+                      }`}
+                    >
+                      {pl === "all" ? "Planos" : pl}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="relative w-full sm:w-72">
+              <div className="relative w-full md:w-72">
                 <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input 
                   type="text"
                   value={userSearch}
                   onChange={(e) => setUserSearch(e.target.value)}
-                  placeholder="Buscar por ID..."
+                  placeholder="Buscar por nome ou e-mail..."
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder:text-zinc-500 outline-none focus:border-indigo-500"
                 />
               </div>
@@ -643,10 +681,10 @@ export default function AdminCommandCenter() {
                 <table className="w-full text-left text-xs">
                   <thead className="bg-zinc-900/80 text-zinc-400 uppercase text-[10px] tracking-wider border-b border-zinc-800">
                     <tr>
-                      <th className="p-3.5">ID do Usuário</th>
+                      <th className="p-3.5">Usuário / Estudante</th>
+                      <th className="p-3.5">Tipo de Conta</th>
                       <th className="p-3.5">Plano Ativo</th>
                       <th className="p-3.5">Saldo de Créditos</th>
-                      <th className="p-3.5">Permissão</th>
                       <th className="p-3.5">Status</th>
                       <th className="p-3.5 text-right">Ações</th>
                     </tr>
@@ -655,34 +693,59 @@ export default function AdminCommandCenter() {
                     {users.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="p-8 text-center text-zinc-500">
-                          Nenhum estudante encontrado.
+                          Nenhum usuário encontrado nesta categoria.
                         </td>
                       </tr>
                     ) : (
                       users.map((u) => (
                         <tr key={u.id} className="hover:bg-zinc-800/40 transition">
-                          <td className="p-3.5 font-mono text-[11px] text-zinc-300 truncate max-w-[200px]">
-                            {u.id}
+                          <td className="p-3.5">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center overflow-hidden shrink-0 text-xs font-bold text-white shadow-sm">
+                                {u.avatar_url ? (
+                                  <img src={u.avatar_url} alt="avatar" className="w-full h-full object-cover" />
+                                ) : (
+                                  (u.full_name || u.email || "U").slice(0, 2).toUpperCase()
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-semibold text-zinc-100 text-xs truncate max-w-[200px]">
+                                  {u.full_name || u.email?.split("@")[0] || "Usuário"}
+                                </p>
+                                <p className="text-[11px] text-zinc-500 font-mono truncate max-w-[200px]" title={u.email || u.id}>
+                                  {u.email || u.id}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-3.5">
+                            {u.is_admin ? (
+                              <span className="text-amber-300 font-bold text-[10px] bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                                <ShieldCheck className="w-3 h-3" /> Staff / Admin
+                              </span>
+                            ) : (
+                              <span className="text-indigo-300 font-medium text-[10px] bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                                <User className="w-3 h-3" /> Estudante
+                              </span>
+                            )}
                           </td>
                           <td className="p-3.5">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                               u.plan_type === "premium" ? "bg-amber-500/15 text-amber-400 border border-amber-500/30" :
                               u.plan_type === "ultra" ? "bg-violet-500/15 text-violet-400 border border-violet-500/30" :
-                              "bg-indigo-500/15 text-indigo-400 border border-indigo-500/30"
+                              u.plan_type === "pro" ? "bg-indigo-500/15 text-indigo-400 border border-indigo-500/30" :
+                              "bg-zinc-800 text-zinc-400 border border-zinc-700"
                             }`}>
-                              {u.plan_type || "pro"}
+                              {u.plan_type || "free"}
                             </span>
                           </td>
                           <td className="p-3.5 font-bold text-white">
-                            {u.credits_balance?.toLocaleString("pt-AO") || 0}
-                          </td>
-                          <td className="p-3.5">
-                            {u.is_admin ? (
-                              <span className="text-emerald-400 font-semibold text-[10px] bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-                                Administrador
+                            {u.plan_type === "premium" ? (
+                              <span className="text-amber-400 font-extrabold flex items-center gap-1 text-xs">
+                                <Crown className="w-3 h-3" /> Ilimitado
                               </span>
                             ) : (
-                              <span className="text-zinc-500 text-[10px]">Estudante</span>
+                              u.credits_balance?.toLocaleString("pt-AO") || 0
                             )}
                           </td>
                           <td className="p-3.5">
@@ -699,7 +762,7 @@ export default function AdminCommandCenter() {
                               onClick={() => {
                                 setSelectedUser(u);
                                 setEditUserCredits(u.credits_balance || 0);
-                                setEditUserPlan(u.plan_type || "pro");
+                                setEditUserPlan(u.plan_type || "free");
                               }}
                               size="sm"
                               variant="outline"
@@ -990,8 +1053,8 @@ export default function AdminCommandCenter() {
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white outline-none focus:border-indigo-500"
                 >
                   <option value="free">Free (Gratuito)</option>
-                  <option value="pro">Pro (1.000 Créditos)</option>
-                  <option value="ultra">Ultra (1.000.000 Créditos)</option>
+                  <option value="pro">Pro (2.000 Créditos)</option>
+                  <option value="ultra">Ultra (10.000 Créditos)</option>
                   <option value="premium">Premium (VIP Ilimitado)</option>
                 </select>
               </div>

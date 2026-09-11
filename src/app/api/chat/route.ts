@@ -63,9 +63,11 @@ export async function POST(req: Request) {
         .eq("id", user?.id)
         .single();
       profile = p;
+      const userPlan = profile?.plan_type || 'free';
 
-      if (!profile || profile.credits_balance < 1) {
-        return new Response(JSON.stringify({ error: "Créditos insuficientes." }), { status: 402, headers: { 'Content-Type': 'application/json' } });
+      // Plano Premium possui acesso ILIMITADO (sem travas de saldo)
+      if (userPlan !== 'premium' && (!profile || profile.credits_balance < 1)) {
+        return new Response(JSON.stringify({ error: "Créditos insuficientes. Faça upgrade para continuar." }), { status: 402, headers: { 'Content-Type': 'application/json' } });
       }
     }
 
@@ -326,10 +328,10 @@ export async function POST(req: Request) {
               content: finalResponseText
             });
 
-            if (!insertError) {
+            if (!insertError && profile.plan_type !== 'premium') {
               await supabase
                 .from("profiles")
-                .update({ credits_balance: profile.credits_balance - 1 })
+                .update({ credits_balance: Math.max(0, profile.credits_balance - 1) })
                 .eq("id", user!.id);
             }
           }

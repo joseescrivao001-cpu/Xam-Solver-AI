@@ -15,6 +15,7 @@ export async function GET(request: Request) {
     const search = searchParams.get("search") || "";
     const plan = searchParams.get("plan") || "all";
     const status = searchParams.get("status") || "all";
+    const role = searchParams.get("role") || "all";
 
     const serviceClient = createServiceClient();
     const supabase = serviceClient || createClient();
@@ -23,6 +24,12 @@ export async function GET(request: Request) {
       .from("profiles")
       .select("*")
       .order("created_at", { ascending: false });
+
+    if (role === "students") {
+      query = query.or("is_admin.is.null,is_admin.eq.false");
+    } else if (role === "staff") {
+      query = query.eq("is_admin", true);
+    }
 
     if (plan !== "all") {
       query = query.eq("plan_type", plan);
@@ -35,7 +42,7 @@ export async function GET(request: Request) {
     }
 
     if (search.trim()) {
-      query = query.or(`id.ilike.%${search}%`);
+      query = query.or(`id.ilike.%${search}%,email.ilike.%${search}%,full_name.ilike.%${search}%`);
     }
 
     const { data: users, error } = await query;

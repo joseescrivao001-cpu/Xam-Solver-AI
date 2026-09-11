@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -17,8 +17,9 @@ interface PaymentSettingsData {
   notes: string;
   usd_to_aoa_rate: number;
   plans: {
-    ultra: { usd: number; aoa: number; formatted_aoa: string };
-    premium: { usd: number; aoa: number; formatted_aoa: string };
+    pro?: { usd: number; aoa: number; formatted_aoa: string; credits: string };
+    ultra?: { usd: number; aoa: number; formatted_aoa: string; credits: string };
+    premium?: { usd: number; aoa: number; formatted_aoa: string; credits: string };
   };
 }
 
@@ -33,11 +34,11 @@ interface PricingModalProps {
 export default function PricingModal({
   isOpen,
   onClose,
-  currentPlan = "pro",
+  currentPlan = "free",
   userEmail,
   onPlanUpdated
 }: PricingModalProps) {
-  const [selectedPlan, setSelectedPlan] = useState<'ultra' | 'premium' | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<'pro' | 'ultra' | 'premium' | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'mcx' | 'stripe' | null>(null);
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofBase64, setProofBase64] = useState<string | null>(null);
@@ -62,6 +63,7 @@ export default function PricingModal({
 
   if (!isOpen) return null;
 
+  const proAoaFormatted = paymentSettings?.plans?.pro?.formatted_aoa || "9.500 Kz";
   const ultraAoaFormatted = paymentSettings?.plans?.ultra?.formatted_aoa || "19.000 Kz";
   const premiumAoaFormatted = paymentSettings?.plans?.premium?.formatted_aoa || "39.000 Kz";
   const exchangeRate = paymentSettings?.usd_to_aoa_rate || 950;
@@ -80,9 +82,41 @@ export default function PricingModal({
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setProofFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => setProofBase64(reader.result as string);
-      reader.readAsDataURL(file);
+
+      // Compactação automática via Canvas para imagens (evita erro 413 da Vercel)
+      if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new window.Image();
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            const maxDim = 1200;
+            let width = img.width;
+            let height = img.height;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            ctx?.drawImage(img, 0, 0, width, height);
+            const compressed = canvas.toDataURL("image/jpeg", 0.78);
+            setProofBase64(compressed);
+          };
+          img.src = event.target?.result as string;
+        };
+        reader.readAsDataURL(file);
+      } else {
+        const reader = new FileReader();
+        reader.onloadend = () => setProofBase64(reader.result as string);
+        reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -95,14 +129,18 @@ export default function PricingModal({
 
   const handleMCXSubmit = async () => {
     if (!selectedPlan || !proofBase64) {
-      setFeedback({ text: "Anexe o print do comprovativo para validação.", type: 'error' });
+      setFeedback({ text: "Anexe o comprovativo de pagamento para validação.", type: 'error' });
       return;
     }
 
     setIsSubmitting(true);
     setFeedback(null);
 
-    const amount = selectedPlan === 'ultra' ? ultraAoaFormatted : premiumAoaFormatted;
+    const amount = selectedPlan === 'pro' 
+      ? proAoaFormatted 
+      : selectedPlan === 'ultra' 
+      ? ultraAoaFormatted 
+      : premiumAoaFormatted;
 
     try {
       const res = await fetch("/api/checkout/mcx", {
@@ -116,7 +154,7 @@ export default function PricingModal({
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erro no envio.");
+      if (!res.ok) throw new Error(data.error || "Erro ao registrar o comprovativo.");
 
       setFeedback({
         text: "Comprovativo enviado com sucesso! Seus créditos e plano serão atualizados em instantes.",
@@ -127,8 +165,10 @@ export default function PricingModal({
         if (onPlanUpdated) onPlanUpdated();
         setPaymentMethod(null);
         setSelectedPlan(null);
+        setProofFile(null);
+        setProofBase64(null);
         onClose();
-      }, 3000);
+      }, 2500);
     } catch (err) {
       setFeedback({
         text: err instanceof Error ? err.message : "Erro ao enviar comprovativo.",
@@ -236,31 +276,31 @@ export default function PricingModal({
         {!selectedPlan && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10 items-stretch">
             
-            {/* 1. PLANO PRO (1.000 Créditos) */}
+            {/* 1. PLANO FREE (Gratuito) */}
             <div className="bg-zinc-900/60 backdrop-blur-xl border border-zinc-800/80 rounded-3xl p-6 flex flex-col justify-between transition-all duration-300 hover:scale-[1.02] hover:border-zinc-700 relative">
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                  <div className="w-10 h-10 rounded-2xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400">
                     <Zap className="w-5 h-5" />
                   </div>
-                  {currentPlan === 'pro' && (
+                  {currentPlan === 'free' && (
                     <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1">
                       <Check className="w-3.5 h-3.5" /> Seu Plano Atual
                     </span>
                   )}
                 </div>
 
-                <h3 className="text-xl font-bold text-white">Plano Pro</h3>
-                <p className="text-xs text-zinc-400 mt-1">Para estudos do dia a dia, exercícios e dúvidas em exames.</p>
+                <h3 className="text-xl font-bold text-white">Plano Free</h3>
+                <p className="text-xs text-zinc-400 mt-1">Plano base gratuito para experimentar e resolver questões iniciais.</p>
 
                 <div className="my-5">
                   <span className="text-3xl sm:text-4xl font-black text-white">0 Kz</span>
-                  <span className="text-zinc-500 text-xs ml-2">/ plano base</span>
+                  <span className="text-zinc-500 text-xs ml-2">/ gratuito</span>
                 </div>
 
                 <ul className="space-y-3 text-xs text-zinc-300">
                   <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" /> <strong>1.000 Créditos</strong> de resolução
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" /> <strong>5 Créditos</strong> de cortesia
                   </li>
                   <li className="flex items-center gap-2.5">
                     <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Motor IA de Resolução Instantânea
@@ -269,10 +309,7 @@ export default function PricingModal({
                     <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Leitura OCR de Imagens e Provas
                   </li>
                   <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Protocolo Safe-Charge Ativo
-                  </li>
-                  <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Gestão Completa por Cadernos
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Organização por Cadernos de Estudo
                   </li>
                 </ul>
               </div>
@@ -281,70 +318,85 @@ export default function PricingModal({
                 <Button 
                   disabled 
                   variant="outline" 
-                  className="w-full h-11 rounded-xl text-xs font-semibold text-emerald-400 border-emerald-500/30 bg-emerald-500/5 cursor-default"
+                  className="w-full h-11 rounded-xl text-xs font-semibold text-zinc-400 border-zinc-800 bg-zinc-900/50 cursor-default"
                 >
-                  ✓ Ativo na sua Conta
+                  {currentPlan === 'free' ? '✓ Ativo na sua Conta' : 'Plano Básico Grátis'}
                 </Button>
               </div>
             </div>
 
-            {/* 2. PLANO ULTRA (1.000.000 Créditos - Mais Popular) */}
-            <div className="bg-gradient-to-b from-zinc-900/90 to-zinc-950/90 backdrop-blur-xl border-2 border-violet-500/60 rounded-3xl p-6 flex flex-col justify-between transition-all duration-300 hover:scale-105 shadow-[0_0_50px_rgba(139,92,246,0.25)] hover:shadow-[0_0_70px_rgba(139,92,246,0.4)] relative">
+            {/* 2. PLANO PRO (2.000 Créditos) */}
+            <div className="bg-gradient-to-b from-zinc-900/90 to-zinc-950/90 backdrop-blur-xl border-2 border-indigo-500/60 rounded-3xl p-6 flex flex-col justify-between transition-all duration-300 hover:scale-105 shadow-[0_0_50px_rgba(99,102,241,0.25)] relative">
               <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                <span className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-[11px] font-black tracking-wider uppercase px-4 py-1 rounded-full shadow-lg shadow-violet-500/40 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" /> Mais Popular
+                <span className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white text-[11px] font-black tracking-wider uppercase px-4 py-1 rounded-full shadow-lg shadow-indigo-500/40 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" /> Mais Procurado
                 </span>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-4 mt-1">
-                  <div className="w-10 h-10 rounded-2xl bg-violet-500/20 border border-violet-500/30 flex items-center justify-center text-violet-300">
-                    <Sparkles className="w-5 h-5" />
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300">
+                    <Zap className="w-5 h-5" />
                   </div>
-                  <span className="text-[10px] text-violet-400 font-mono font-medium">Câmbio em tempo real</span>
+                  {currentPlan === 'pro' ? (
+                    <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" /> Seu Plano Atual
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-indigo-400 font-mono font-medium">Câmbio em tempo real</span>
+                  )}
                 </div>
 
-                <h3 className="text-xl font-bold text-white">Plano Ultra</h3>
-                <p className="text-xs text-zinc-400 mt-1">Para estudantes universitários, exames difíceis e vestibulares.</p>
+                <h3 className="text-xl font-bold text-white">Plano Pro</h3>
+                <p className="text-xs text-zinc-400 mt-1">Para estudantes do ensino secundário, pré-universitários e vestibulares.</p>
 
                 <div className="my-5">
-                  <span className="text-3xl sm:text-4xl font-black text-white">{ultraAoaFormatted}</span>
-                  <span className="text-zinc-500 text-xs ml-1.5">ou $19 USD</span>
+                  <span className="text-3xl sm:text-4xl font-black text-white">{proAoaFormatted}</span>
+                  <span className="text-zinc-500 text-xs ml-1.5">ou $10 USD</span>
                 </div>
 
                 <ul className="space-y-3 text-xs text-zinc-200">
                   <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-violet-400 shrink-0" /> <strong className="text-violet-300">1.000.000 Créditos</strong> (1 Milhão)
+                    <Check className="w-4 h-4 text-indigo-400 shrink-0" /> <strong className="text-indigo-300">2.000 Créditos</strong> de resolução
                   </li>
                   <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-violet-400 shrink-0" /> <strong>Multi-LLM: Meta LLaMA 3.3 + DeepMind Pro</strong>
+                    <Check className="w-4 h-4 text-indigo-400 shrink-0" /> Motor IA Groq Ultra-Rápido & Gemini Flash
                   </li>
                   <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-violet-400 shrink-0" /> Resolução de Cálculo, Física e Engenharia
+                    <Check className="w-4 h-4 text-indigo-400 shrink-0" /> Leitura OCR Avançada de Fórmulas e Provas
                   </li>
                   <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-violet-400 shrink-0" /> Groq LPU de Ultra-Velocidade
+                    <Check className="w-4 h-4 text-indigo-400 shrink-0" /> Protocolo Seguro Safe-Charge Ativo
                   </li>
                   <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-violet-400 shrink-0" /> Prioridade Máxima no Roteador de Failover
+                    <Check className="w-4 h-4 text-indigo-400 shrink-0" /> Gestão Completa por Cadernos
                   </li>
                 </ul>
               </div>
 
               <div className="mt-8">
-                <Button 
-                  onClick={() => setSelectedPlan('ultra')}
-                  className="w-full h-11 rounded-xl text-xs font-bold bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-lg shadow-violet-500/30 transition-all hover:scale-[1.02] cursor-pointer"
-                >
-                  Fazer Upgrade para Ultra <ArrowRight className="w-4 h-4 ml-1.5" />
-                </Button>
+                {currentPlan === 'pro' ? (
+                  <Button 
+                    onClick={() => setSelectedPlan('pro')}
+                    className="w-full h-11 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg cursor-pointer"
+                  >
+                    Recarregar +2.000 Créditos
+                  </Button>
+                ) : (
+                  <Button 
+                    onClick={() => setSelectedPlan('pro')}
+                    className="w-full h-11 rounded-xl text-xs font-bold bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-lg shadow-indigo-500/30 transition-all hover:scale-[1.02] cursor-pointer"
+                  >
+                    Fazer Upgrade para Pro (2.000) <ArrowRight className="w-4 h-4 ml-1.5" />
+                  </Button>
+                )}
               </div>
             </div>
 
             {/* 3. PLANO PREMIUM (VIP Gold / Ilimitado) */}
-            <div className="bg-gradient-to-b from-zinc-900/90 to-zinc-950/90 backdrop-blur-xl border border-amber-500/40 rounded-3xl p-6 flex flex-col justify-between transition-all duration-300 hover:scale-105 shadow-[0_0_50px_rgba(245,158,11,0.2)] hover:shadow-[0_0_70px_rgba(245,158,11,0.35)] relative">
+            <div className="bg-gradient-to-b from-zinc-900/90 to-zinc-950/90 backdrop-blur-xl border border-amber-500/50 rounded-3xl p-6 flex flex-col justify-between transition-all duration-300 hover:scale-105 shadow-[0_0_50px_rgba(245,158,11,0.25)] hover:shadow-[0_0_70px_rgba(245,158,11,0.4)] relative">
               <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                <span className="bg-gradient-to-r from-amber-500 to-yellow-600 text-zinc-950 text-[11px] font-black tracking-wider uppercase px-4 py-1 rounded-full shadow-lg shadow-amber-500/30 flex items-center gap-1.5">
+                <span className="bg-gradient-to-r from-amber-500 to-yellow-500 text-zinc-950 text-[11px] font-black tracking-wider uppercase px-4 py-1 rounded-full shadow-lg shadow-amber-500/30 flex items-center gap-1.5">
                   <Crown className="w-3.5 h-3.5" /> VIP Ilimitado
                 </span>
               </div>
@@ -354,11 +406,17 @@ export default function PricingModal({
                   <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
                     <Crown className="w-5 h-5" />
                   </div>
-                  <span className="text-[10px] text-amber-400 font-mono font-medium">Câmbio em tempo real</span>
+                  {currentPlan === 'premium' ? (
+                    <span className="bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1">
+                      <Crown className="w-3.5 h-3.5" /> Seu Plano VIP Ativo
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-amber-400 font-mono font-medium">Câmbio em tempo real</span>
+                  )}
                 </div>
 
                 <h3 className="text-xl font-bold text-white">Plano Premium</h3>
-                <p className="text-xs text-zinc-400 mt-1">Poder total sem limites com suporte direto do desenvolvedor.</p>
+                <p className="text-xs text-zinc-400 mt-1">Acesso irrestrito sem limites com cluster completo de inteligência artificial.</p>
 
                 <div className="my-5">
                   <span className="text-3xl sm:text-4xl font-black text-white">{premiumAoaFormatted}</span>
@@ -367,30 +425,40 @@ export default function PricingModal({
 
                 <ul className="space-y-3 text-xs text-zinc-200">
                   <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-amber-400 shrink-0" /> <strong className="text-amber-300">Créditos Ilimitados</strong> (Sem restrições)
+                    <Check className="w-4 h-4 text-amber-400 shrink-0" /> <strong className="text-amber-300">Créditos ILIMITADOS</strong> (Sem contador e sem fim)
                   </li>
                   <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-amber-400 shrink-0" /> Cluster Completo: LLaMA 3.3 + DeepMind Pro + Groq
+                    <Check className="w-4 h-4 text-amber-400 shrink-0" /> <strong>Cluster Completo: Gemini 1.5 Pro + LLaMA 3.3 + Groq</strong>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-amber-400 shrink-0" /> Resolução de Cálculo, Física Avançada e Engenharias
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-amber-400 shrink-0" /> Prioridade Máxima no Roteador de Failover
                   </li>
                   <li className="flex items-center gap-2.5">
                     <Check className="w-4 h-4 text-amber-400 shrink-0" /> Suporte VIP 24/7 direto com José Escrivão
-                  </li>
-                  <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-amber-400 shrink-0" /> Validação Cruzada Multi-Agente em Provas
-                  </li>
-                  <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-amber-400 shrink-0" /> Exportação Completa dos Estudos em PDF
                   </li>
                 </ul>
               </div>
 
               <div className="mt-8">
-                <Button 
-                  onClick={() => setSelectedPlan('premium')}
-                  className="w-full h-11 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-zinc-950 shadow-lg shadow-amber-500/30 transition-all hover:scale-[1.02] cursor-pointer"
-                >
-                  Assinar Premium VIP <ArrowRight className="w-4 h-4 ml-1.5" />
-                </Button>
+                {currentPlan === 'premium' ? (
+                  <Button 
+                    disabled 
+                    variant="outline" 
+                    className="w-full h-11 rounded-xl text-xs font-semibold text-amber-400 border-amber-500/30 bg-amber-500/10 cursor-default"
+                  >
+                    ✓ Plano VIP Ativo Sem Limites
+                  </Button>
+                ) : (
+                  <Button 
+                    onClick={() => setSelectedPlan('premium')}
+                    className="w-full h-11 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-zinc-950 shadow-lg shadow-amber-500/30 transition-all hover:scale-[1.02] cursor-pointer"
+                  >
+                    Assinar Premium VIP <ArrowRight className="w-4 h-4 ml-1.5" />
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -403,10 +471,12 @@ export default function PricingModal({
             <div className="p-6 rounded-3xl bg-zinc-900 border border-zinc-800 shadow-xl text-center mb-6">
               <span className="text-xs font-bold uppercase tracking-wider text-indigo-400">Plano Selecionado</span>
               <h3 className="text-2xl font-bold text-white mt-1">
-                {selectedPlan === 'ultra' ? 'Plano Ultra (1.000.000 Créditos)' : 'Plano Premium VIP (Ilimitado)'}
+                {selectedPlan === 'pro' ? 'Plano Pro (2.000 Créditos)' : selectedPlan === 'ultra' ? 'Plano Ultra (10.000 Créditos)' : 'Plano Premium VIP (Ilimitado)'}
               </h3>
               <p className="text-zinc-400 text-sm mt-1">
-                Valor Oficial: <strong className="text-emerald-400">{selectedPlan === 'ultra' ? `${ultraAoaFormatted} ($19 USD)` : `${premiumAoaFormatted} ($39 USD)`}</strong>
+                Valor Oficial: <strong className="text-emerald-400">
+                  {selectedPlan === 'pro' ? `${proAoaFormatted} ($10 USD)` : selectedPlan === 'ultra' ? `${ultraAoaFormatted} ($19 USD)` : `${premiumAoaFormatted} ($39 USD)`}
+                </strong>
               </p>
               <p className="text-[11px] text-zinc-500 mt-1">
                 * Conversão cambial em tempo real: 1 USD ≈ {exchangeRate} Kz
@@ -468,7 +538,7 @@ export default function PricingModal({
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-500">Valor a Transferir:</span>
                   <span className="font-bold text-emerald-400 text-sm">
-                    {selectedPlan === 'ultra' ? ultraAoaFormatted : premiumAoaFormatted}
+                    {selectedPlan === 'pro' ? proAoaFormatted : selectedPlan === 'ultra' ? ultraAoaFormatted : premiumAoaFormatted}
                   </span>
                 </div>
 
@@ -509,7 +579,7 @@ export default function PricingModal({
                 )}
               </div>
 
-              {/* Upload Proof Input */}
+              {/* Upload Proof Input with Live Thumbnail Preview */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-2">
                   Anexar Comprovativo de Pagamento
@@ -519,15 +589,31 @@ export default function PricingModal({
                     type="file" 
                     accept="image/*,.pdf" 
                     onChange={handleProofChange}
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" 
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10" 
                   />
-                  <div className="flex flex-col items-center justify-center">
-                    <Upload className="w-6 h-6 text-zinc-400 mb-1" />
+                  <div className="flex flex-col items-center justify-center pointer-events-none">
                     {proofFile ? (
-                      <span className="text-xs font-medium text-emerald-400">{proofFile.name} (Anexado)</span>
+                      <div className="flex flex-col items-center gap-2">
+                        {proofBase64 && proofFile.type.startsWith("image/") && (
+                          <div className="w-24 h-24 rounded-xl overflow-hidden border border-emerald-500/40 relative shadow-md">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={proofBase64} alt="Preview do comprovativo" className="w-full h-full object-cover" />
+                          </div>
+                        )}
+                        <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5" /> {proofFile.name}
+                        </span>
+                        <span className="text-[10px] text-zinc-400">
+                          {(proofFile.size / 1024).toFixed(0)} KB • Pronto para envio
+                        </span>
+                        <span className="text-[11px] text-indigo-400 underline mt-0.5">
+                          Clique para trocar de arquivo
+                        </span>
+                      </div>
                     ) : (
                       <>
-                        <span className="text-xs font-medium text-zinc-300">Clique para selecionar o print do comprovativo</span>
+                        <Upload className="w-6 h-6 text-zinc-400 mb-1" />
+                        <span className="text-xs font-medium text-zinc-300">Clique para selecionar a foto ou print do comprovativo</span>
                         <span className="text-[10px] text-zinc-500 mt-0.5">Formatos suportados: PNG, JPG ou PDF</span>
                       </>
                     )}
@@ -551,6 +637,7 @@ export default function PricingModal({
             </div>
           </div>
         )}
+
 
         {/* Modal Footer com Câmbio e Botão Fixo de Voltar ao Chat */}
         <div className="mt-8 pt-4 border-t border-zinc-800/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-zinc-500 relative z-10">

@@ -44,16 +44,17 @@ export async function POST(req: Request) {
       .eq("id", user.id)
       .single();
 
-    if (!profile || profile.credits_balance < 1) {
-      return new Response(JSON.stringify({ error: "Créditos insuficientes." }), { status: 402, headers: { 'Content-Type': 'application/json' } });
+    const userPlan = profile?.plan_type || 'free';
+
+    // Plano Premium possui acesso ILIMITADO (sem travas de saldo e sem dedução)
+    if (userPlan !== 'premium' && (!profile || profile.credits_balance < 1)) {
+      return new Response(JSON.stringify({ error: "Créditos insuficientes. Faça upgrade para continuar." }), { status: 402, headers: { 'Content-Type': 'application/json' } });
     }
 
     const formData = await req.formData();
     const mode = formData.get("mode") as string;
     const text = formData.get("text") as string;
     const file = formData.get("file") as File | null;
-
-    const userPlan = profile.plan_type || 'pro';
     if ((mode === 'dificil' || mode === 'pro') && userPlan !== 'ultra' && userPlan !== 'premium') {
       return new Response(JSON.stringify({
         error: "UPGRADE_REQUIRED",
@@ -206,8 +207,8 @@ export async function POST(req: Request) {
             answer_json: { response: finalResponseText }
           });
 
-          if (!insertError) {
-            await supabase.from("profiles").update({ credits_balance: profile.credits_balance - 1 }).eq("id", user.id);
+          if (!insertError && userPlan !== 'premium' && profile) {
+            await supabase.from("profiles").update({ credits_balance: Math.max(0, profile.credits_balance - 1) }).eq("id", user.id);
           }
 
           controller.close();
