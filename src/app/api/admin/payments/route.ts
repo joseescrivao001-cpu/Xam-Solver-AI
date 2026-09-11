@@ -1,5 +1,5 @@
-﻿import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { NextResponse } from "next/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { verifyAdmin, unauthorizedResponse } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,8 @@ export async function GET(request: Request) {
     const status = searchParams.get("status") || "all";
     const search = searchParams.get("search") || "";
 
-    const supabase = createClient();
+    const serviceClient = createServiceClient();
+    const supabase = serviceClient || createClient();
     let query = supabase
       .from("payment_proofs")
       .select("*")
@@ -54,7 +55,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Parâmetros inválidos." }, { status: 400 });
     }
 
-    const supabase = createClient();
+    const serviceClient = createServiceClient();
+    const supabase = serviceClient || createClient();
 
     // Buscar comprovativo
     const { data: proof, error: proofErr } = await supabase

@@ -1,12 +1,14 @@
 -- ==========================================================
--- EXAM SOLVER AI - ADMIN COMMAND CENTER & SECURITY HARDENING (V1.4)
+-- EXAM SOLVER AI - ADMIN COMMAND CENTER & ENTERPRISE REPAIR
 -- Execute este script no SQL Editor do seu Dashboard Supabase
 -- ==========================================================
 
--- 1. Colunas de Segurança e Auditoria na tabela profiles
+-- 1. Colunas de Perfil, Avatar e Segurança
 ALTER TABLE public.profiles 
   ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS avatar_url TEXT,
+  ADD COLUMN IF NOT EXISTS full_name TEXT,
   ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now());
 
 -- 2. Tabela de Logs de Erros e Auditoria de IA
@@ -21,7 +23,6 @@ CREATE TABLE IF NOT EXISTS public.api_error_logs (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Habilitar RLS em api_error_logs
 ALTER TABLE public.api_error_logs ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Admins podem visualizar logs de erros" ON public.api_error_logs;
@@ -39,55 +40,71 @@ CREATE POLICY "Sistema pode inserir logs de erros"
   ON public.api_error_logs FOR INSERT
   WITH CHECK (true);
 
--- 3. Atualizar permissões de profiles para Administradores
+-- 3. Função Helper SECURITY DEFINER para verificar se o usuário é Admin sem recursão RLS
+CREATE OR REPLACE FUNCTION public.is_current_user_admin()
+RETURNS BOOLEAN AS $$
+  SELECT COALESCE((SELECT is_admin FROM public.profiles WHERE id = auth.uid()), FALSE);
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
+-- 4. Políticas RLS limpas em public.profiles (Sem Recursão Infinita)
 DROP POLICY IF EXISTS "Admins podem visualizar e gerenciar todos os perfis" ON public.profiles;
-CREATE POLICY "Admins podem visualizar e gerenciar todos os perfis"
+DROP POLICY IF EXISTS "Admins can view and manage all profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Users can view their own profile." ON public.profiles;
+DROP POLICY IF EXISTS "Users can update their own profile." ON public.profiles;
+
+-- Usuário autenticado lê e atualiza seu próprio perfil
+CREATE POLICY "Users can view their own profile."
+  ON public.profiles FOR SELECT
+  USING ( auth.uid() = id );
+
+CREATE POLICY "Users can update their own profile."
+  ON public.profiles FOR UPDATE
+  USING ( auth.uid() = id );
+
+-- Administrador lê e gerencia todos os perfis
+CREATE POLICY "Admins can view and manage all profiles"
   ON public.profiles FOR ALL
-  USING (
-    auth.uid() = id OR
-    EXISTS (
-      SELECT 1 FROM public.profiles p
-      WHERE p.id = auth.uid() AND p.is_admin = TRUE
-    )
-  );
+  USING ( public.is_current_user_admin() );
 
--- 4. Atualizar permissões de payment_proofs para Administradores
+-- 5. Políticas RLS limpas em public.payment_proofs
 DROP POLICY IF EXISTS "Admins podem gerenciar todos os comprovativos" ON public.payment_proofs;
-CREATE POLICY "Admins podem gerenciar todos os comprovativos"
-  ON public.payment_proofs FOR ALL
-  USING (
-    auth.uid() = user_id OR
-    EXISTS (
-      SELECT 1 FROM public.profiles p
-      WHERE p.id = auth.uid() AND p.is_admin = TRUE
-    )
-  );
+DROP POLICY IF EXISTS "Admins can manage all proofs" ON public.payment_proofs;
+DROP POLICY IF EXISTS "Users can view own proofs" ON public.payment_proofs;
+DROP POLICY IF EXISTS "Users can insert own proofs" ON public.payment_proofs;
 
--- 5. BLINDAGEM DE BANCO: Trava Contra Escalada de Privilégios (Anti-Privilege Escalation)
--- Impede categoricamente que qualquer requisição vinda com chave pública/anon ou token de usuário comum altere 'is_admin'
+CREATE POLICY "Users can view own proofs"
+  ON public.payment_proofs FOR SELECT
+  USING ( auth.uid() = user_id );
+
+CREATE POLICY "Users can insert own proofs"
+  ON public.payment_proofs FOR INSERT
+  WITH CHECK ( auth.uid() = user_id );
+
+CREATE POLICY "Admins can manage all proofs"
+  ON public.payment_proofs FOR ALL
+  USING ( public.is_current_user_admin() );
+
+-- 6. BLINDAGEM DE BANCO: Trava Contra Escalada de Privilégios (Anti-Privilege Escalation)
 CREATE OR REPLACE FUNCTION public.protect_is_admin_escalation()
 RETURNS TRIGGER AS $$
 DECLARE
   v_current_role TEXT;
   v_is_requester_admin BOOLEAN;
 BEGIN
-  -- Se o campo is_admin foi alterado
   IF NEW.is_admin IS DISTINCT FROM OLD.is_admin THEN
     v_current_role := current_setting('role', true);
     
-    -- Permitir caso venha do SQL Editor (postgres/supabase_admin), sem sessão web (auth.uid() IS NULL) ou backend (service_role)
+    -- Permitir SQL Editor (postgres/supabase_admin), sem sessão web direta ou backend
     IF v_current_role IN ('service_role', 'postgres', 'supabase_admin') 
        OR CURRENT_USER IN ('postgres', 'supabase_admin')
        OR auth.uid() IS NULL THEN
       RETURN NEW;
     END IF;
 
-    -- Se for uma requisição de cliente (usuário comum autenticado tentando alterar seu próprio perfil)
     SELECT is_admin INTO v_is_requester_admin
     FROM public.profiles
     WHERE id = auth.uid();
 
-    -- Se o usuário requisitante NÃO for um admin confirmado, abortar a transação
     IF v_is_requester_admin IS NOT TRUE THEN
       RAISE EXCEPTION 'Acesso Negado: A coluna is_admin é estritamente protegida contra escalada de privilégios.';
     END IF;
@@ -103,22 +120,7 @@ BEFORE UPDATE ON public.profiles
 FOR EACH ROW
 EXECUTE FUNCTION public.protect_is_admin_escalation();
 
--- 6. Função para tornar um usuário Admin com facilidade
--- Exemplo: SELECT public.make_user_admin('seu-email@gmail.com');
-CREATE OR REPLACE FUNCTION public.make_user_admin(target_email TEXT)
-RETURNS TEXT AS $$
-DECLARE
-  v_user_id UUID;
-BEGIN
-  SELECT id INTO v_user_id FROM auth.users WHERE email = target_email;
-  IF v_user_id IS NULL THEN
-    RETURN 'Usuário não encontrado com o e-mail fornecido.';
-  END IF;
-
-  UPDATE public.profiles
-  SET is_admin = TRUE
-  WHERE id = v_user_id;
-
-  RETURN 'Usuário ' || target_email || ' promovido a Administrador com sucesso!';
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+-- 7. Ativar a conta do fundador Jose Escrivao com 1.000.000 créditos e premium
+UPDATE public.profiles
+SET is_admin = TRUE, credits_balance = 1000000, plan_type = 'premium'
+WHERE email = 'joseescrivao001@gmail.com';

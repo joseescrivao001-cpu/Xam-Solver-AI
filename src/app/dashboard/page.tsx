@@ -11,7 +11,7 @@ import {
   Check, Sun, Moon, User, 
   Book, Sparkles, LogOut, ChevronDown, PenSquare, ArrowUp, Mic, ShieldCheck,
   Paperclip, Cloud, Camera, Search, Settings, Folder, FolderPlus,
-  RefreshCw, Key, Activity
+  RefreshCw, Key, Activity, Upload, Loader2
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -66,6 +66,11 @@ export default function ExamSolverGrand() {
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [user, setUser] = useState<{ id: string, email?: string } | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userAvatar, setUserAvatar] = useState<string | null>(null);
+  const [userFullName, setUserFullName] = useState<string | null>(null);
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+  const [newAvatarInput, setNewAvatarInput] = useState("");
+  const [isSavingAvatar, setIsSavingAvatar] = useState(false);
   const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([]);
   
   // UI State
@@ -168,11 +173,35 @@ export default function ExamSolverGrand() {
       }
       setUser({ id: user.id, email: user.email });
 
-      const { data: profile } = await supabase.from("profiles").select("credits_balance, plan_type, is_admin").eq("id", user.id).single();
-      if (profile) {
-        if (profile.credits_balance !== undefined && profile.credits_balance !== null) setCredits(profile.credits_balance);
-        if (profile.plan_type) setUserPlan(profile.plan_type as 'free' | 'pro' | 'ultra' | 'premium');
-        if (profile.is_admin) setIsAdmin(true);
+      // Sincronizar dados do Perfil via API interna com service_role (robusto contra RLS)
+      try {
+        const res = await fetch("/api/user/profile", { cache: "no-store" });
+        if (res.ok) {
+          const { profile, user: profileUser } = await res.json();
+          if (profile) {
+            if (profile.credits_balance !== undefined && profile.credits_balance !== null) {
+              setCredits(profile.credits_balance);
+            }
+            if (profile.plan_type) {
+              setUserPlan(profile.plan_type as 'free' | 'pro' | 'ultra' | 'premium');
+            }
+            if (profile.is_admin) {
+              setIsAdmin(true);
+            }
+            if (profile.avatar_url) {
+              setUserAvatar(profile.avatar_url);
+            } else if (profileUser?.googleAvatar) {
+              setUserAvatar(profileUser.googleAvatar);
+            }
+            if (profile.full_name) {
+              setUserFullName(profile.full_name);
+            } else if (profileUser?.googleName) {
+              setUserFullName(profileUser.googleName);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[INIT_PROFILE_FETCH_WARN]", err);
       }
 
       const { data: convs } = await supabase.from("conversations").select("*").order("created_at", { ascending: false });
@@ -406,13 +435,59 @@ export default function ExamSolverGrand() {
   const refreshCredits = async () => {
     if (!user) return;
     setIsRefreshingCredits(true);
-    const { data: profile } = await supabase.from("profiles").select("credits_balance, plan_type").eq("id", user.id).single();
-    if (profile) {
-      if (profile.credits_balance !== undefined && profile.credits_balance !== null) setCredits(profile.credits_balance);
-      if (profile.plan_type) setUserPlan(profile.plan_type as 'free' | 'pro' | 'ultra' | 'premium');
-      setSettingsMessage("Saldo de créditos e plano sincronizados com sucesso!");
+    try {
+      const res = await fetch("/api/user/profile", { cache: "no-store" });
+      if (res.ok) {
+        const { profile, user: profileUser } = await res.json();
+        if (profile) {
+          if (profile.credits_balance !== undefined && profile.credits_balance !== null) setCredits(profile.credits_balance);
+          if (profile.plan_type) setUserPlan(profile.plan_type as 'free' | 'pro' | 'ultra' | 'premium');
+          if (profile.is_admin) setIsAdmin(true);
+          if (profile.avatar_url) setUserAvatar(profile.avatar_url);
+          else if (profileUser?.googleAvatar) setUserAvatar(profileUser.googleAvatar);
+          if (profile.full_name) setUserFullName(profile.full_name);
+          else if (profileUser?.googleName) setUserFullName(profileUser.googleName);
+          setSettingsMessage("Saldo de créditos e plano sincronizados com sucesso!");
+        }
+      }
+    } catch (err) {
+      console.error(err);
     }
     setIsRefreshingCredits(false);
+  };
+
+  const handleSaveAvatar = async (urlToSave?: string) => {
+    const avatarUrl = urlToSave || newAvatarInput;
+    if (!avatarUrl.trim()) return;
+    setIsSavingAvatar(true);
+    try {
+      const res = await fetch("/api/user/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatar_url: avatarUrl.trim() }),
+      });
+      if (res.ok) {
+        setUserAvatar(avatarUrl.trim());
+        setIsAvatarModalOpen(false);
+        setNewAvatarInput("");
+      }
+    } catch (err) {
+      console.error("Erro ao salvar avatar:", err);
+    } finally {
+      setIsSavingAvatar(false);
+    }
+  };
+
+  const handleAvatarFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        handleSaveAvatar(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleResetPassword = async () => {
@@ -871,13 +946,28 @@ export default function ExamSolverGrand() {
 
               <div onClick={() => user ? setIsSettingsOpen(true) : router.push("/login")} className="flex items-center justify-between px-2 py-2 mt-2 cursor-pointer hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 rounded-xl transition">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs shadow-sm">
-                    {user?.email ? user.email.slice(0, 2).toUpperCase() : <User className="w-4 h-4" />}
+                  <div 
+                    onClick={(e) => {
+                      if (user) {
+                        e.stopPropagation();
+                        setIsAvatarModalOpen(true);
+                      }
+                    }}
+                    className="relative w-8 h-8 rounded-full overflow-hidden shrink-0 border border-indigo-500/40 hover:ring-2 ring-indigo-500 transition cursor-pointer"
+                    title="Clique para trocar sua foto"
+                  >
+                    {userAvatar ? (
+                      <img src={userAvatar} alt="Avatar" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs shadow-sm">
+                        {userFullName ? userFullName.slice(0, 2).toUpperCase() : user?.email ? user.email.slice(0, 2).toUpperCase() : <User className="w-4 h-4" />}
+                      </div>
+                    )}
                   </div>
                   <div className="overflow-hidden max-w-[120px]">
                     {user ? (
                       <>
-                        <p className="text-[13px] font-medium text-zinc-900 dark:text-zinc-200 truncate">{user?.email?.split('@')[0] || "Estudante"}</p>
+                        <p className="text-[13px] font-medium text-zinc-900 dark:text-zinc-200 truncate">{userFullName || user?.email?.split('@')[0] || "Estudante"}</p>
                         <p className="text-[11px] text-zinc-500 truncate">{user?.email}</p>
                       </>
                     ) : (
@@ -1317,15 +1407,39 @@ export default function ExamSolverGrand() {
                 {/* Profile Card */}
                 <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700/50 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-base shadow-sm">
-                      {user?.email ? user.email.slice(0, 2).toUpperCase() : <User className="w-5 h-5" />}
+                    <div 
+                      onClick={() => user && setIsAvatarModalOpen(true)}
+                      className="relative w-12 h-12 rounded-full overflow-hidden shrink-0 border-2 border-indigo-500/40 shadow-sm cursor-pointer hover:ring-2 ring-indigo-500 transition group"
+                      title="Alterar Avatar"
+                    >
+                      {userAvatar ? (
+                        <img src={userAvatar} alt="Avatar" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-base shadow-sm">
+                          {userFullName ? userFullName.slice(0, 2).toUpperCase() : user?.email ? user.email.slice(0, 2).toUpperCase() : <User className="w-5 h-5" />}
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                        <Camera className="w-4 h-4 text-white" />
+                      </div>
                     </div>
                     <div>
-                      <p className="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">{user?.email || "Convidado"}</p>
-                      <p className="text-xs text-zinc-500">{user ? `Plano ${userPlan.toUpperCase()}` : "Acesso Convidado"}</p>
+                      <p className="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">{userFullName || user?.email?.split('@')[0] || "Convidado"}</p>
+                      <p className="text-xs text-zinc-500">{user?.email}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {user && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsAvatarModalOpen(true)}
+                        className="rounded-xl text-xs h-8 px-2.5 flex items-center gap-1 border-zinc-300 dark:border-zinc-700"
+                      >
+                        <Camera className="w-3.5 h-3.5 text-indigo-500" />
+                        Foto
+                      </Button>
+                    )}
                     <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-500 uppercase tracking-wider">
                       {userPlan.toUpperCase()}
                     </span>
@@ -1406,6 +1520,150 @@ export default function ExamSolverGrand() {
                     Fechar
                   </Button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------------- MODAL: PERSONALIZAR AVATAR ---------------- */}
+      <AnimatePresence>
+        {isAvatarModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }} 
+              animate={{ opacity: 1, scale: 1 }} 
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative max-h-[90vh] overflow-y-auto"
+            >
+              <button 
+                onClick={() => setIsAvatarModalOpen(false)} 
+                className="absolute top-6 right-6 p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 dark:bg-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                  <Camera className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">Personalizar Avatar</h3>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Escolha um avatar pronto, envie do seu dispositivo ou use um link</p>
+                </div>
+              </div>
+
+              {/* Current Avatar Preview */}
+              <div className="flex flex-col items-center justify-center p-5 mb-6 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700/50">
+                <div className="w-24 h-24 rounded-full border-4 border-indigo-500/30 overflow-hidden shadow-xl relative flex items-center justify-center bg-zinc-200 dark:bg-zinc-700 mb-2">
+                  {userAvatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={userAvatar} alt="Avatar Atual" className="w-full h-full object-cover" />
+                  ) : (
+                    <User className="w-12 h-12 text-zinc-400" />
+                  )}
+                  {isSavingAvatar && (
+                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                      <Loader2 className="w-6 h-6 text-white animate-spin" />
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                  {userFullName || user?.email || "Seu Perfil"}
+                </p>
+              </div>
+
+              {/* Upload Local File */}
+              <div className="mb-6">
+                <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block mb-2">
+                  Upload do Computador ou Telemóvel
+                </label>
+                <label className="flex items-center justify-center gap-3 w-full p-3.5 rounded-2xl border-2 border-dashed border-indigo-300 dark:border-indigo-800 hover:border-indigo-500 dark:hover:border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/20 cursor-pointer transition text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30">
+                  <Upload className="w-4 h-4" />
+                  <span className="text-xs font-medium">Selecionar foto ou imagem</span>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={handleAvatarFileUpload} 
+                    className="hidden" 
+                    disabled={isSavingAvatar}
+                  />
+                </label>
+              </div>
+
+              {/* Presets Grid */}
+              <div className="mb-6">
+                <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block mb-2">
+                  Avatares Estilizados Sugeridos
+                </label>
+                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2.5">
+                  {[
+                    "https://api.dicebear.com/7.x/bottts/svg?seed=Felix",
+                    "https://api.dicebear.com/7.x/bottts/svg?seed=Gizmo",
+                    "https://api.dicebear.com/7.x/bottts/svg?seed=Spooky",
+                    "https://api.dicebear.com/7.x/bottts/svg?seed=Snuggles",
+                    "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix",
+                    "https://api.dicebear.com/7.x/avataaars/svg?seed=Aria",
+                    "https://api.dicebear.com/7.x/avataaars/svg?seed=Jack",
+                    "https://api.dicebear.com/7.x/avataaars/svg?seed=Zoe",
+                    "https://api.dicebear.com/7.x/lorelei/svg?seed=Felix",
+                    "https://api.dicebear.com/7.x/lorelei/svg?seed=Milo",
+                    "https://api.dicebear.com/7.x/lorelei/svg?seed=Cleo",
+                    "https://api.dicebear.com/7.x/micah/svg?seed=Leo"
+                  ].map((presetUrl, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      disabled={isSavingAvatar}
+                      onClick={() => handleSaveAvatar(presetUrl)}
+                      className={`relative w-12 h-12 rounded-xl overflow-hidden border-2 transition hover:scale-105 p-1 bg-zinc-100 dark:bg-zinc-800 ${
+                        userAvatar === presetUrl 
+                          ? 'border-indigo-600 dark:border-indigo-400 ring-2 ring-indigo-500/20' 
+                          : 'border-transparent hover:border-zinc-300 dark:hover:border-zinc-600'
+                      }`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={presetUrl} alt="Preset Avatar" className="w-full h-full object-contain" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Direct Image URL */}
+              <div className="mb-6">
+                <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block mb-2">
+                  Ou Insira URL Direto da Imagem
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    placeholder="https://exemplo.com/minha-foto.jpg"
+                    value={newAvatarInput}
+                    onChange={(e) => setNewAvatarInput(e.target.value)}
+                    className="flex-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl px-3.5 py-2 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={isSavingAvatar || !newAvatarInput.trim()}
+                    onClick={() => handleSaveAvatar()}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs px-4"
+                  >
+                    {isSavingAvatar ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Salvar"}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Close Button */}
+              <div className="flex justify-end pt-3 border-t border-zinc-100 dark:border-zinc-800">
+                <Button 
+                  onClick={() => setIsAvatarModalOpen(false)} 
+                  variant="ghost" 
+                  size="sm" 
+                  className="rounded-xl text-xs"
+                >
+                  Fechar
+                </Button>
               </div>
             </motion.div>
           </div>

@@ -1,5 +1,5 @@
-﻿import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { NextResponse } from "next/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { verifyAdmin, unauthorizedResponse } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +11,8 @@ export async function GET() {
       return unauthorizedResponse(auth.error);
     }
 
-    const supabase = createClient();
+    const serviceClient = createServiceClient();
+    const supabase = serviceClient || createClient();
 
     // 1. Total de Usuários
     const { count: totalUsers, error: usersError } = await supabase
