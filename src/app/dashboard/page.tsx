@@ -9,7 +9,8 @@ import {
   BrainCircuit, AlertCircle, Edit2, Trash2, 
   Check, Sun, Moon, User, 
   Book, Sparkles, LogOut, ChevronDown, PenSquare, ArrowUp, Mic, ShieldCheck,
-  Paperclip, Cloud, Camera, Search, FileText
+  Paperclip, Cloud, Camera, Search, Settings, Folder, FolderPlus,
+  RefreshCw, Key
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -42,6 +43,13 @@ type GalleryImage = {
   conversation_id: string;
 };
 
+type Notebook = {
+  id: string;
+  name: string;
+  color: string;
+  created_at?: string;
+};
+
 export default function ExamSolverGrand() {
   const supabase = createClient();
   const router = useRouter();
@@ -65,9 +73,30 @@ export default function ExamSolverGrand() {
   const [modelMode, setModelMode] = useState("gemini-1.5-flash");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Notebooks State (CRUD & Linking)
+  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [activeNotebookId, setActiveNotebookId] = useState<string | null>(null);
   const [notebookFilter, setNotebookFilter] = useState<string | null>(null);
+  const [isNewNotebookModalOpen, setIsNewNotebookModalOpen] = useState(false);
+  const [newNotebookName, setNewNotebookName] = useState("");
+  const [newNotebookColor, setNewNotebookColor] = useState("indigo");
+  const [convNotebookMap, setConvNotebookMap] = useState<Record<string, string>>({});
+  const [movingConvId, setMovingConvId] = useState<string | null>(null);
+
+  // Settings & Account Modal State
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
+  const [isRefreshingCredits, setIsRefreshingCredits] = useState(false);
+
+  // Gallery Modal State
+  const [selectedGalleryImage, setSelectedGalleryImage] = useState<GalleryImage | null>(null);
+
+  // Google Drive Modal State
+  const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
+  const [driveUrlInput, setDriveUrlInput] = useState("");
   
-  // Auto-dismiss toasts (errors)
+  // Auto-dismiss toasts
   useEffect(() => {
     if (error) {
       const timer = setTimeout(() => setError(null), 4000);
@@ -78,7 +107,6 @@ export default function ExamSolverGrand() {
   // Popovers, Modals & Refs
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [isAttachMenuOpen, setIsAttachMenuOpen] = useState(false);
-  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   
   const attachRef = useRef<HTMLDivElement>(null);
   const modelRef = useRef<HTMLDivElement>(null);
@@ -96,7 +124,7 @@ export default function ExamSolverGrand() {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Initialize
+  // Initialize Data
   useEffect(() => {
     const initData = async () => {
       setIsDataLoading(true);
@@ -105,6 +133,7 @@ export default function ExamSolverGrand() {
         // GUEST MODE
         const guestCreds = localStorage.getItem("guestCredits");
         setCredits(guestCreds ? parseInt(guestCreds) : 2);
+        loadNotebooksState("guest");
         setIsDataLoading(false);
         return;
       }
@@ -116,12 +145,84 @@ export default function ExamSolverGrand() {
       const { data: convs } = await supabase.from("conversations").select("*").order("created_at", { ascending: false });
       if (convs) setConversations(convs);
       
+      loadNotebooksState(user.id);
+
       if (convs && convs.length > 0) loadConversation(convs[0].id);
       setIsDataLoading(false);
     };
     initData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, supabase]);
+
+  // Load Notebooks and Map from LocalStorage
+  const loadNotebooksState = (userId: string) => {
+    const key = `user_notebooks_${userId}`;
+    const mapKey = `conv_notebook_map_${userId}`;
+    
+    try {
+      const savedMap = localStorage.getItem(mapKey);
+      if (savedMap) setConvNotebookMap(JSON.parse(savedMap));
+    } catch {}
+
+    try {
+      const savedNbs = localStorage.getItem(key);
+      if (savedNbs) {
+        setNotebooks(JSON.parse(savedNbs));
+      } else {
+        const defaults: Notebook[] = [
+          { id: "nb-fisica", name: "Física & Mecânica", color: "indigo", created_at: new Date().toISOString() },
+          { id: "nb-calculo", name: "Cálculo & Matemática", color: "emerald", created_at: new Date().toISOString() },
+          { id: "nb-quimica", name: "Química Orgânica", color: "amber", created_at: new Date().toISOString() },
+          { id: "nb-bio", name: "Biologia & Saúde", color: "rose", created_at: new Date().toISOString() },
+        ];
+        setNotebooks(defaults);
+        localStorage.setItem(key, JSON.stringify(defaults));
+      }
+    } catch {}
+  };
+
+  const saveNotebooks = (updated: Notebook[]) => {
+    setNotebooks(updated);
+    try {
+      localStorage.setItem(`user_notebooks_${user?.id || "guest"}`, JSON.stringify(updated));
+    } catch {}
+  };
+
+  const createNotebook = () => {
+    if (!newNotebookName.trim()) return;
+    const newNb: Notebook = {
+      id: "nb-" + Date.now().toString(),
+      name: newNotebookName.trim(),
+      color: newNotebookColor || "indigo",
+      created_at: new Date().toISOString()
+    };
+    const updated = [newNb, ...notebooks];
+    saveNotebooks(updated);
+    setIsNewNotebookModalOpen(false);
+    setNewNotebookName("");
+  };
+
+  const deleteNotebook = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const updated = notebooks.filter(nb => nb.id !== id);
+    saveNotebooks(updated);
+    if (activeNotebookId === id) setActiveNotebookId(null);
+  };
+
+  const moveConversationToNotebook = (convId: string, nbId: string | null) => {
+    const mapKey = `conv_notebook_map_${user?.id || "guest"}`;
+    const newMap = { ...convNotebookMap };
+    if (nbId) {
+      newMap[convId] = nbId;
+    } else {
+      delete newMap[convId];
+    }
+    setConvNotebookMap(newMap);
+    try {
+      localStorage.setItem(mapKey, JSON.stringify(newMap));
+    } catch {}
+    setMovingConvId(null);
+  };
 
   // Click Outside Listener
   useEffect(() => {
@@ -140,34 +241,78 @@ export default function ExamSolverGrand() {
   }, [messages, isStreaming, activeView]);
 
   // Fetch Gallery Images
-  useEffect(() => {
-    if (activeView === 'images' && user) {
-      const fetchImages = async () => {
-        const convIds = conversations.map(c => c.id);
-        if (convIds.length === 0) {
-          setGalleryImages([]);
-          return;
+  const fetchGalleryImages = async () => {
+    const imagesList: GalleryImage[] = [];
+
+    // 1. LocalStorage cached uploads
+    try {
+      const cached = localStorage.getItem(`user_images_${user?.id || "guest"}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          imagesList.push(...parsed);
         }
-        const { data } = await supabase
+      }
+    } catch {}
+
+    // 2. Query messages with image_url
+    if (user && conversations.length > 0) {
+      const convIds = conversations.map(c => c.id);
+      try {
+        const { data: msgData } = await supabase
           .from("messages")
           .select("id, image_url, created_at, conversation_id")
           .in("conversation_id", convIds)
           .not("image_url", "is", null)
           .order("created_at", { ascending: false });
-        
-        if (data) {
-          const mapped = data.map(item => ({
-            id: item.id,
-            url: item.image_url,
-            created_at: item.created_at,
-            conversation_id: item.conversation_id
-          }));
-          setGalleryImages(mapped as GalleryImage[]);
+
+        if (msgData) {
+          for (const item of msgData) {
+            if (item.image_url && !imagesList.some(img => img.url === item.image_url)) {
+              imagesList.push({
+                id: item.id,
+                url: item.image_url,
+                created_at: item.created_at,
+                conversation_id: item.conversation_id
+              });
+            }
+          }
         }
-      };
-      fetchImages();
+      } catch {}
+
+      // 3. Query exams table
+      try {
+        const { data: examData } = await supabase
+          .from("exams")
+          .select("id, image_url, created_at")
+          .eq("user_id", user.id)
+          .not("image_url", "is", null)
+          .order("created_at", { ascending: false });
+
+        if (examData) {
+          for (const item of examData) {
+            if (item.image_url && !imagesList.some(img => img.url === item.image_url)) {
+              imagesList.push({
+                id: item.id,
+                url: item.image_url,
+                created_at: item.created_at,
+                conversation_id: conversations[0]?.id || ""
+              });
+            }
+          }
+        }
+      } catch {}
     }
-  }, [activeView, conversations, user, supabase]);
+
+    setGalleryImages(imagesList);
+  };
+
+  useEffect(() => {
+    if (activeView === 'images') {
+      fetchGalleryImages();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView, conversations, user]);
 
   // Core Actions
   const loadConversation = async (id: string) => {
@@ -177,7 +322,7 @@ export default function ExamSolverGrand() {
     if (msgs) setMessages(msgs);
   };
 
-  const createNewChat = async () => {
+  const createNewChat = async (targetNotebookId?: string | null) => {
     setActiveView('chat');
     if (!user) {
       setCurrentConvId(null);
@@ -192,6 +337,12 @@ export default function ExamSolverGrand() {
       setConversations([data, ...conversations]);
       setCurrentConvId(data.id);
       setMessages([]);
+
+      // Auto-assign to active or target notebook
+      const assignNb = targetNotebookId !== undefined ? targetNotebookId : activeNotebookId;
+      if (assignNb) {
+        moveConversationToNotebook(data.id, assignNb);
+      }
     }
   };
 
@@ -219,6 +370,29 @@ export default function ExamSolverGrand() {
     router.push("/login");
   };
 
+  const refreshCredits = async () => {
+    if (!user) return;
+    setIsRefreshingCredits(true);
+    const { data: profile } = await supabase.from("profiles").select("credits_balance").eq("id", user.id).single();
+    if (profile) {
+      setCredits(profile.credits_balance);
+      setSettingsMessage("Saldo de créditos sincronizado com sucesso!");
+    }
+    setIsRefreshingCredits(false);
+  };
+
+  const handleResetPassword = async () => {
+    if (!user?.email) return;
+    const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+      redirectTo: `${window.location.origin}/login`,
+    });
+    if (error) {
+      setSettingsMessage(`Erro: ${error.message}`);
+    } else {
+      setSettingsMessage("E-mail de recuperação de senha enviado com sucesso!");
+    }
+  };
+
   // Google Drive Integration
   const handleDrivePicker = () => {
     setIsAttachMenuOpen(false);
@@ -226,7 +400,8 @@ export default function ExamSolverGrand() {
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY;
     
     if (!clientId || !apiKey) {
-      setError("A integração com o Google Drive estará disponível em breve.");
+      // Abre o modal universal do Google Drive para inserção rápida
+      setIsDriveModalOpen(true);
       return;
     }
     
@@ -238,16 +413,30 @@ export default function ExamSolverGrand() {
       showUploadFolders: true,
       supportDrives: true,
       multiselect: false,
-      callbackFunction: (data) => {
-        if (data.action === 'picked' && data.docs[0]) {
+      callbackFunction: async (data) => {
+        if (data.action === 'picked' && data.docs && data.docs.length > 0) {
           const doc = data.docs[0];
-          // Since we might not have a real API key configured yet, fallback gracefully
-          if (doc.url) {
-            setError(`O Google Drive vinculou a imagem: ${doc.name}. A integração requer chaves OAuth de Produção.`);
-          }
+          const thumbUrl = `https://lh3.googleusercontent.com/d/${doc.id}`;
+          setImageBase64(thumbUrl);
+          setInputText(prev => prev ? `${prev} [Arquivo Drive: ${doc.name}]` : `Resolva a questão deste arquivo do Google Drive: ${doc.name}`);
         }
       },
     });
+  };
+
+  const handleDriveUrlSubmit = () => {
+    if (!driveUrlInput.trim()) return;
+    const match = driveUrlInput.match(/\/d\/([a-zA-Z0-9_-]+)/) || driveUrlInput.match(/id=([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      const fileId = match[1];
+      const directThumb = `https://lh3.googleusercontent.com/d/${fileId}`;
+      setImageBase64(directThumb);
+      setInputText(prev => prev ? `${prev} [Arquivo Google Drive]` : "Resolva a questão anexada do Google Drive.");
+      setIsDriveModalOpen(false);
+      setDriveUrlInput("");
+    } else {
+      setError("Link inválido. Insira um link de compartilhamento válido do Google Drive.");
+    }
   };
 
   // Microphone (Speech Recognition)
@@ -338,7 +527,7 @@ export default function ExamSolverGrand() {
   };
 
   const handleSubmit = async () => {
-    if (!inputText.trim() && !imageFile) return;
+    if (!inputText.trim() && !imageFile && !imageBase64) return;
     if (credits < 1) {
       if (!user) {
         setError("Créditos de teste esgotados. Crie uma conta grátis para continuar!");
@@ -363,6 +552,10 @@ export default function ExamSolverGrand() {
         activeConvId = data.id;
         setConversations([data, ...conversations]);
         setCurrentConvId(activeConvId);
+
+        if (activeNotebookId) {
+          moveConversationToNotebook(data.id, activeNotebookId);
+        }
       } else {
         setError("Erro de rede. Tente novamente.");
         setIsStreaming(false);
@@ -370,11 +563,34 @@ export default function ExamSolverGrand() {
       }
     }
 
-    const newUserMsg: Message = { id: Date.now().toString(), role: 'user', content: inputText, image_url: imageBase64 || undefined };
+    const currentBase64 = imageBase64;
+    const newUserMsg: Message = { 
+      id: Date.now().toString(), 
+      role: 'user', 
+      content: inputText, 
+      image_url: currentBase64 || undefined 
+    };
     const tempAiMsgId = "temp-" + Date.now().toString();
     const tempAiMsg: Message = { id: tempAiMsgId, role: 'ai', content: "" };
     
     setMessages(prev => [...prev, newUserMsg, tempAiMsg]);
+
+    // Save image to local gallery cache immediately
+    if (currentBase64) {
+      try {
+        const key = `user_images_${user?.id || "guest"}`;
+        const cached = localStorage.getItem(key);
+        const list: GalleryImage[] = cached ? JSON.parse(cached) : [];
+        const newImg: GalleryImage = {
+          id: Date.now().toString(),
+          url: currentBase64,
+          created_at: new Date().toISOString(),
+          conversation_id: activeConvId || ""
+        };
+        list.unshift(newImg);
+        localStorage.setItem(key, JSON.stringify(list.slice(0, 60)));
+      } catch {}
+    }
 
     const formData = new FormData();
     formData.append("model", modelMode);
@@ -420,9 +636,14 @@ export default function ExamSolverGrand() {
     }
   };
 
-  const filteredConversations = notebookFilter 
-    ? conversations.filter(c => c.title.toLowerCase().includes(notebookFilter.toLowerCase()))
-    : conversations;
+  // Filter Conversations by Active Notebook and Title Search
+  const filteredConversations = conversations.filter(conv => {
+    const matchesNotebook = activeNotebookId ? convNotebookMap[conv.id] === activeNotebookId : true;
+    const matchesSearch = notebookFilter ? conv.title.toLowerCase().includes(notebookFilter.toLowerCase()) : true;
+    return matchesNotebook && matchesSearch;
+  });
+
+  const activeNotebookObj = notebooks.find(nb => nb.id === activeNotebookId);
 
   return (
     <div className="flex h-[100dvh] w-full bg-zinc-50 dark:bg-zinc-950 text-[#1f1f1f] dark:text-[#e3e3e3] font-sans overflow-hidden transition-colors duration-500">
@@ -434,11 +655,11 @@ export default function ExamSolverGrand() {
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: 280, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
-            className="flex-shrink-0 h-full bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border-r border-zinc-200 dark:border-zinc-800/60 flex flex-col z-40 relative shadow-[1px_0_10px_rgba(0,0,0,0.02)] dark:shadow-[1px_0_10px_rgba(0,0,0,0.2)] absolute md:relative w-[280px]"
+            className="flex-shrink-0 h-full bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border-r border-zinc-200 dark:border-zinc-800/60 flex flex-col z-40 relative shadow-sm w-[280px]"
           >
             {/* Header */}
-            <div className="flex items-center justify-between p-4 mb-2">
-              <div className="flex items-center gap-2 px-2">
+            <div className="flex items-center justify-between p-4 mb-1">
+              <div className="flex items-center gap-2 px-2 cursor-pointer" onClick={() => setActiveView('chat')}>
                 <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center shadow-md">
                   <BrainCircuit className="w-4 h-4 text-white" />
                 </div>
@@ -454,27 +675,57 @@ export default function ExamSolverGrand() {
               </div>
             </div>
 
-            {/* Menu Actions */}
+            {/* Main Nav Actions */}
             <div className="px-3 space-y-1">
-              <button onClick={createNewChat} className={`w-full flex items-center gap-3 px-3 py-2.5 text-[14px] font-medium rounded-xl transition ${activeView === 'chat' && currentConvId === null ? 'bg-white dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/50 dark:border-zinc-700/50' : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
-                <PenSquare className="w-4 h-4" />
+              <button onClick={() => createNewChat()} className={`w-full flex items-center gap-3 px-3 py-2.5 text-[14px] font-medium rounded-xl transition ${activeView === 'chat' && currentConvId === null ? 'bg-white dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/50 dark:border-zinc-700/50' : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
+                <PenSquare className="w-4 h-4 text-indigo-500" />
                 Iniciar novo
               </button>
-              <button onClick={() => {setActiveView('notebooks'); setNotebookFilter(null);}} className={`w-full flex items-center gap-3 px-3 py-2 text-[14px] font-medium rounded-xl transition ${activeView === 'notebooks' ? 'bg-white dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/50 dark:border-zinc-700/50' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
-                <Book className="w-4 h-4" /> Cadernos de estudo
+              <button onClick={() => { setActiveView('notebooks'); setNotebookFilter(null); }} className={`w-full flex items-center gap-3 px-3 py-2 text-[14px] font-medium rounded-xl transition ${activeView === 'notebooks' ? 'bg-white dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/50 dark:border-zinc-700/50' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
+                <Book className="w-4 h-4 text-emerald-500" /> Cadernos de estudo
               </button>
-              <button onClick={() => setActiveView('images')} className={`w-full flex items-center gap-3 px-3 py-2 text-[14px] font-medium rounded-xl transition ${activeView === 'images' ? 'bg-white dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/50 dark:border-zinc-700/50' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
-                <ImageIcon className="w-4 h-4" /> Minhas Imagens
+              <button onClick={() => { setActiveView('images'); fetchGalleryImages(); }} className={`w-full flex items-center gap-3 px-3 py-2 text-[14px] font-medium rounded-xl transition ${activeView === 'images' ? 'bg-white dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/50 dark:border-zinc-700/50' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
+                <ImageIcon className="w-4 h-4 text-blue-500" /> Minhas Imagens
               </button>
             </div>
 
+            {/* Notebook Quick Filter Chips */}
+            <div className="px-3 mt-4">
+              <div className="flex items-center justify-between px-2 mb-1.5">
+                <span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Cadernos</span>
+                <button onClick={() => setIsNewNotebookModalOpen(true)} className="p-1 text-zinc-400 hover:text-indigo-500 rounded transition" title="Criar novo caderno">
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+                <button 
+                  onClick={() => setActiveNotebookId(null)}
+                  className={`px-2 py-0.5 text-[11px] rounded-md font-medium whitespace-nowrap transition ${activeNotebookId === null ? 'bg-indigo-600 text-white shadow-sm' : 'bg-zinc-200/60 dark:bg-zinc-800/60 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900'}`}
+                >
+                  Todos
+                </button>
+                {notebooks.map(nb => (
+                  <button 
+                    key={nb.id}
+                    onClick={() => setActiveNotebookId(activeNotebookId === nb.id ? null : nb.id)}
+                    className={`px-2 py-0.5 text-[11px] rounded-md font-medium whitespace-nowrap transition flex items-center gap-1 ${activeNotebookId === nb.id ? 'bg-indigo-600 text-white shadow-sm' : 'bg-zinc-200/60 dark:bg-zinc-800/60 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900'}`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${nb.color === 'emerald' ? 'bg-emerald-500' : nb.color === 'amber' ? 'bg-amber-500' : nb.color === 'rose' ? 'bg-rose-500' : 'bg-indigo-500'}`} />
+                    {nb.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Chats List */}
-            <div className="flex-1 overflow-y-auto px-3 mt-8 scrollbar-hide">
+            <div className="flex-1 overflow-y-auto px-3 mt-3 scrollbar-hide">
               <div className="flex items-center justify-between mb-2 px-3">
-                <p className="text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Meus Chats</p>
-                {notebookFilter && (
-                  <span className="text-[10px] bg-indigo-500/10 text-indigo-500 px-2 rounded-full cursor-pointer" onClick={() => setNotebookFilter(null)}>
-                    Limpar Filtro
+                <p className="text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
+                  {activeNotebookObj ? `Caderno: ${activeNotebookObj.name}` : "Meus Chats"}
+                </p>
+                {activeNotebookId && (
+                  <span className="text-[10px] text-indigo-500 hover:underline cursor-pointer" onClick={() => setActiveNotebookId(null)}>
+                    Ver todos
                   </span>
                 )}
               </div>
@@ -484,58 +735,79 @@ export default function ExamSolverGrand() {
                   Array.from({ length: 5 }).map((_, i) => (
                     <div key={i} className="h-9 w-full bg-zinc-200/50 dark:bg-zinc-800/50 rounded-lg animate-pulse mb-1"></div>
                   ))
-                ) : filteredConversations.map(conv => (
-                  <div key={conv.id} onMouseEnter={() => setHoveredConvId(conv.id)} onMouseLeave={() => setHoveredConvId(null)} className="relative">
-                    {editingConvId === conv.id ? (
-                      <div className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-zinc-800 rounded-lg shadow-sm border border-indigo-500/30">
-                        <input 
-                          autoFocus value={editTitle} onChange={e => setEditTitle(e.target.value)}
-                          onKeyDown={e => e.key === 'Enter' && handleRename(conv.id)}
-                          className="bg-transparent text-[13px] text-zinc-900 dark:text-zinc-100 flex-1 outline-none min-w-0"
-                        />
-                        <button onClick={() => handleRename(conv.id)} className="text-indigo-500"><Check className="w-4 h-4" /></button>
-                      </div>
-                    ) : (
-                      <button 
-                        onClick={() => {loadConversation(conv.id); if(window.innerWidth < 768) setIsSidebarOpen(false);}}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-[13px] transition flex items-center justify-between ${activeView === 'chat' && currentConvId === conv.id ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 font-medium' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/40 dark:hover:bg-zinc-800/40'}`}
-                      >
-                        <span className="truncate pr-4">{conv.title}</span>
-                        {hoveredConvId === conv.id && (
-                          <div className="flex items-center gap-1 absolute right-2 bg-zinc-200/70 dark:bg-zinc-800 pl-2">
-                            <Edit2 onClick={(e) => { e.stopPropagation(); setEditingConvId(conv.id); setEditTitle(conv.title); }} className="w-3.5 h-3.5 text-zinc-500 hover:text-indigo-500" />
-                            <Trash2 onClick={(e) => handleDelete(conv.id, e)} className="w-3.5 h-3.5 text-zinc-500 hover:text-rose-500" />
-                          </div>
-                        )}
-                      </button>
-                    )}
+                ) : filteredConversations.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-xs text-zinc-400 dark:text-zinc-500">
+                    Nenhuma conversa neste caderno.
                   </div>
-                ))}
+                ) : filteredConversations.map(conv => {
+                  const assignedNbId = convNotebookMap[conv.id];
+                  const assignedNb = notebooks.find(n => n.id === assignedNbId);
+
+                  return (
+                    <div key={conv.id} onMouseEnter={() => setHoveredConvId(conv.id)} onMouseLeave={() => setHoveredConvId(null)} className="relative">
+                      {editingConvId === conv.id ? (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-zinc-800 rounded-lg shadow-sm border border-indigo-500/30">
+                          <input 
+                            autoFocus value={editTitle} onChange={e => setEditTitle(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleRename(conv.id)}
+                            className="bg-transparent text-[13px] text-zinc-900 dark:text-zinc-100 flex-1 outline-none min-w-0"
+                          />
+                          <button onClick={() => handleRename(conv.id)} className="text-indigo-500"><Check className="w-4 h-4" /></button>
+                        </div>
+                      ) : (
+                        <button 
+                          onClick={() => { loadConversation(conv.id); if(window.innerWidth < 768) setIsSidebarOpen(false); }}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-[13px] transition flex items-center justify-between ${activeView === 'chat' && currentConvId === conv.id ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 font-medium' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/40 dark:hover:bg-zinc-800/40'}`}
+                        >
+                          <div className="flex items-center gap-2 truncate pr-4">
+                            {assignedNb && (
+                              <span className={`w-2 h-2 rounded-full shrink-0 ${assignedNb.color === 'emerald' ? 'bg-emerald-500' : assignedNb.color === 'amber' ? 'bg-amber-500' : assignedNb.color === 'rose' ? 'bg-rose-500' : 'bg-indigo-500'}`} title={`Caderno: ${assignedNb.name}`} />
+                            )}
+                            <span className="truncate">{conv.title}</span>
+                          </div>
+                          {hoveredConvId === conv.id && (
+                            <div className="flex items-center gap-1.5 absolute right-2 bg-zinc-200/90 dark:bg-zinc-800/90 px-1.5 py-1 rounded shadow-sm">
+                              <button onClick={(e) => { e.stopPropagation(); setMovingConvId(conv.id); }} title="Mover para outro caderno" className="text-zinc-500 hover:text-indigo-500">
+                                <Folder className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); setEditingConvId(conv.id); setEditTitle(conv.title); }} title="Renomear" className="text-zinc-500 hover:text-indigo-500">
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={(e) => handleDelete(conv.id, e)} title="Excluir" className="text-zinc-500 hover:text-rose-500">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Bottom Section */}
+            {/* Bottom Profile / Settings Trigger */}
             <div className="p-3 border-t border-zinc-200 dark:border-zinc-800/60 space-y-2">
-              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-3 text-white shadow-lg relative overflow-hidden group cursor-pointer">
+              <div onClick={() => setIsSettingsOpen(true)} className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-3 text-white shadow-lg relative overflow-hidden group cursor-pointer">
                 <div className="absolute top-0 right-0 w-16 h-16 bg-white/20 blur-2xl group-hover:scale-150 transition-transform duration-500" />
                 <div className="flex items-center justify-between relative z-10">
                   <div>
                     <p className="text-[13px] font-semibold flex items-center gap-1"><Sparkles className="w-3.5 h-3.5"/> ExamSolver Pro</p>
-                    <p className="text-[11px] text-blue-100 mt-0.5">{credits} Créditos {user ? 'disponíveis' : 'de teste'}</p>
+                    <p className="text-[11px] text-blue-100 mt-0.5">{credits} Créditos {user ? 'ativos' : 'de teste'}</p>
                   </div>
-                  <Button size="sm" onClick={() => !user && router.push("/login")} className="bg-white text-blue-600 hover:bg-zinc-100 h-7 text-xs rounded-lg px-3">Upgrade</Button>
+                  <Button size="sm" onClick={(e) => { e.stopPropagation(); setIsSettingsOpen(true); }} className="bg-white text-blue-600 hover:bg-zinc-100 h-7 text-xs rounded-lg px-3">Upgrade</Button>
                 </div>
               </div>
 
-              <div onClick={() => !user && router.push("/login")} className="flex items-center justify-between px-2 py-2 mt-2 cursor-pointer hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 rounded-xl transition">
+              <div onClick={() => user ? setIsSettingsOpen(true) : router.push("/login")} className="flex items-center justify-between px-2 py-2 mt-2 cursor-pointer hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 rounded-xl transition">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-zinc-300 dark:bg-zinc-700 flex items-center justify-center text-zinc-600 dark:text-zinc-300">
-                    <User className="w-4 h-4" />
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs shadow-sm">
+                    {user?.email ? user.email.slice(0, 2).toUpperCase() : <User className="w-4 h-4" />}
                   </div>
                   <div className="overflow-hidden max-w-[120px]">
                     {user ? (
                       <>
-                        <p className="text-[13px] font-medium text-zinc-900 dark:text-zinc-200 truncate">{user?.email?.split('@')[0] || "Usuário"}</p>
+                        <p className="text-[13px] font-medium text-zinc-900 dark:text-zinc-200 truncate">{user?.email?.split('@')[0] || "Estudante"}</p>
                         <p className="text-[11px] text-zinc-500 truncate">{user?.email}</p>
                       </>
                     ) : (
@@ -543,7 +815,13 @@ export default function ExamSolverGrand() {
                     )}
                   </div>
                 </div>
-                {user && <LogOut onClick={handleSignOut} className="w-4 h-4 text-zinc-400 hover:text-rose-500 transition" />}
+                {user ? (
+                  <button onClick={(e) => { e.stopPropagation(); setIsSettingsOpen(true); }} className="p-1.5 text-zinc-400 hover:text-indigo-500 rounded-lg transition" title="Configurações de Conta">
+                    <Settings className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <Button size="sm" variant="ghost" onClick={() => router.push("/login")}>Entrar</Button>
+                )}
               </div>
             </div>
           </motion.aside>
@@ -560,13 +838,29 @@ export default function ExamSolverGrand() {
         </div>
 
         {/* Top Navbar */}
-        <header className="h-14 flex items-center px-4 relative z-20 shrink-0">
+        <header className="h-14 flex items-center px-4 relative z-20 shrink-0 border-b border-zinc-200/50 dark:border-zinc-800/50 bg-white/40 dark:bg-zinc-950/40 backdrop-blur-md">
           {!isSidebarOpen && (
             <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition">
               <Menu className="w-5 h-5" />
             </button>
           )}
-          <div className="ml-auto flex items-center gap-4">
+
+          {/* Active Notebook Indicator in Chat */}
+          {activeNotebookObj && activeView === 'chat' && (
+            <div className="flex items-center gap-2 ml-3 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full text-xs font-medium text-indigo-600 dark:text-indigo-400">
+              <span className={`w-2 h-2 rounded-full ${activeNotebookObj.color === 'emerald' ? 'bg-emerald-500' : activeNotebookObj.color === 'amber' ? 'bg-amber-500' : activeNotebookObj.color === 'rose' ? 'bg-rose-500' : 'bg-indigo-500'}`} />
+              <span>Caderno: <strong>{activeNotebookObj.name}</strong></span>
+              <button onClick={() => setActiveNotebookId(null)} className="hover:text-rose-500 ml-1">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+
+          <div className="ml-auto flex items-center gap-3">
+            <button onClick={() => setIsSettingsOpen(true)} className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>{credits} Créditos</span>
+            </button>
             <span className="text-[13px] font-medium text-zinc-400 flex items-center gap-1">
               <ShieldCheck className="w-4 h-4 text-emerald-500" /> Conexão Blindada
             </span>
@@ -575,33 +869,45 @@ export default function ExamSolverGrand() {
 
         {/* ---------------- VIEWS ---------------- */}
 
+        {/* 1. VIEW: MINHAS IMAGENS */}
         {activeView === 'images' && (
           <div className="flex-1 overflow-y-auto px-6 py-8 relative z-10 scrollbar-hide">
             <div className="max-w-5xl mx-auto">
-              <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mb-2">Minhas Imagens</h1>
-              <p className="text-zinc-500 mb-8">O histórico completo de imagens enviadas. Se o chat for apagado, a imagem também some.</p>
+              <div className="flex items-center justify-between mb-2">
+                <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">Minhas Imagens</h1>
+                <Button onClick={fetchGalleryImages} variant="outline" size="sm" className="flex items-center gap-1.5 text-xs">
+                  <RefreshCw className="w-3.5 h-3.5" /> Atualizar Galeria
+                </Button>
+              </div>
+              <p className="text-zinc-500 mb-8">Todas as imagens de provas, exames e capturas de tela enviadas para a IA. Clique em qualquer imagem para reutilizar ou examinar.</p>
               
-              {!user ? (
-                <div className="p-12 text-center bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
-                  <ImageIcon className="w-12 h-12 text-zinc-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-zinc-900 dark:text-zinc-200">Faça login para ver suas imagens</h3>
-                  <p className="text-zinc-500 mt-2">Convidados não possuem histórico salvo.</p>
-                </div>
-              ) : galleryImages.length === 0 ? (
-                <div className="p-12 text-center bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
-                  <ImageIcon className="w-12 h-12 text-zinc-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-zinc-900 dark:text-zinc-200">Nenhuma imagem enviada</h3>
-                  <p className="text-zinc-500 mt-2">As fotos e provas que você enviar nos chats aparecerão aqui.</p>
+              {galleryImages.length === 0 ? (
+                <div className="p-16 text-center bg-white/60 dark:bg-zinc-900/60 backdrop-blur-md rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
+                  <ImageIcon className="w-12 h-12 text-zinc-300 dark:text-zinc-700 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-zinc-900 dark:text-zinc-200">Sua galeria está vazia</h3>
+                  <p className="text-zinc-500 mt-2 text-sm max-w-md mx-auto">
+                    Assim que você enviar fotos de provas pelo chat, tirar fotos na câmera ou importar do Drive, elas ficarão salvas e acessíveis aqui.
+                  </p>
+                  <Button onClick={() => setActiveView('chat')} className="mt-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl">
+                    Enviar primeira imagem
+                  </Button>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {galleryImages.map(img => (
-                    <div key={img.id} onClick={() => loadConversation(img.conversation_id)} className="relative aspect-square rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800 group cursor-pointer shadow-sm hover:shadow-md transition">
-                      <Image src={img.url} alt="Galeria" fill unoptimized className="object-cover transition-transform duration-500 group-hover:scale-110" />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-3">
-                        <span className="text-white text-xs font-medium bg-black/50 px-2 py-1 rounded-md backdrop-blur-sm truncate w-full">
-                          Ir para o chat
-                        </span>
+                    <div 
+                      key={img.id} 
+                      onClick={() => setSelectedGalleryImage(img)} 
+                      className="relative aspect-square rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800 group cursor-pointer shadow-sm hover:shadow-xl transition-all"
+                    >
+                      <Image src={img.url} alt="Galeria" fill unoptimized className="object-cover transition-transform duration-500 group-hover:scale-105" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
+                        <span className="text-white text-xs font-semibold truncate">Imagem de Estudo</span>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-[10px] text-white/80 bg-white/20 backdrop-blur-sm px-2 py-0.5 rounded-full">
+                            Ver Opções
+                          </span>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -611,53 +917,79 @@ export default function ExamSolverGrand() {
           </div>
         )}
 
+        {/* 2. VIEW: CADERNOS DE ESTUDO */}
         {activeView === 'notebooks' && (
           <div className="flex-1 overflow-y-auto px-6 py-8 relative z-10 scrollbar-hide">
             <div className="max-w-5xl mx-auto">
-              <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mb-2">Cadernos de estudo</h1>
-              <p className="text-zinc-500 mb-8">Filtre seus chats, arquivos e provas em pastas temáticas inteligentes.</p>
+              <div className="flex items-center justify-between mb-2">
+                <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">Cadernos de Estudo</h1>
+                <Button onClick={() => setIsNewNotebookModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl flex items-center gap-2 text-sm shadow-md">
+                  <FolderPlus className="w-4 h-4" /> Criar Novo Caderno
+                </Button>
+              </div>
+              <p className="text-zinc-500 mb-8">Organize suas matérias, provas e resoluções em pastas temáticas inteligentes com isolamento de contexto.</p>
               
               <div className="relative mb-8">
                 <Search className="absolute left-4 top-3.5 w-5 h-5 text-zinc-400" />
                 <input 
                   type="text" 
                   onChange={(e) => setNotebookFilter(e.target.value)}
-                  placeholder="Pesquisar nos seus chats ou cadernos..." 
-                  className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl py-3.5 pl-12 pr-4 text-[15px] shadow-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all dark:text-zinc-100"
+                  placeholder="Pesquisar nos seus cadernos de estudo..." 
+                  className="w-full bg-white/70 dark:bg-zinc-900/70 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 rounded-2xl py-3.5 pl-12 pr-4 text-[15px] shadow-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all dark:text-zinc-100"
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div 
-                  onClick={() => { setNotebookFilter("Física"); setActiveView('chat'); }} 
-                  className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex gap-4 hover:border-indigo-500 hover:shadow-md transition cursor-pointer group"
-                >
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center shrink-0 group-hover:bg-indigo-500/20 transition">
-                    <FileText className="w-6 h-6 text-indigo-500" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-zinc-900 dark:text-zinc-100 group-hover:text-indigo-500 transition">Física Quântica</h3>
-                    <p className="text-sm text-zinc-500 mt-1">Filtra chats e resoluções sobre Física.</p>
-                  </div>
-                </div>
-                
-                <div 
-                  onClick={() => { setNotebookFilter("Cálculo"); setActiveView('chat'); }} 
-                  className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex gap-4 hover:border-emerald-500 hover:shadow-md transition cursor-pointer group"
-                >
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/20 transition">
-                    <Book className="w-6 h-6 text-emerald-500" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-zinc-900 dark:text-zinc-100 group-hover:text-emerald-500 transition">Cálculo II e Integrais</h3>
-                    <p className="text-sm text-zinc-500 mt-1">Filtra análises matemáticas e cálculos da web.</p>
-                  </div>
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {notebooks.map(nb => {
+                  const count = conversations.filter(c => convNotebookMap[c.id] === nb.id).length;
+                  const colorBg = nb.color === 'emerald' ? 'bg-emerald-500/10 text-emerald-500' : nb.color === 'amber' ? 'bg-amber-500/10 text-amber-500' : nb.color === 'rose' ? 'bg-rose-500/10 text-rose-500' : 'bg-indigo-500/10 text-indigo-500';
+
+                  return (
+                    <div 
+                      key={nb.id}
+                      className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl p-6 rounded-3xl border border-zinc-200/80 dark:border-zinc-800/80 shadow-sm flex flex-col justify-between hover:shadow-lg transition group relative"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-12 h-12 rounded-2xl ${colorBg} flex items-center justify-center shrink-0 shadow-sm`}>
+                            <Folder className="w-6 h-6" />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-zinc-900 dark:text-zinc-100 text-lg group-hover:text-indigo-500 transition">{nb.name}</h3>
+                            <p className="text-xs text-zinc-500 mt-1">{count} {count === 1 ? 'conversa associada' : 'conversas associadas'}</p>
+                          </div>
+                        </div>
+                        <button onClick={(e) => deleteNotebook(nb.id, e)} className="p-2 text-zinc-400 hover:text-rose-500 transition rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800" title="Excluir caderno">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2 mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+                        <Button 
+                          onClick={() => { setActiveNotebookId(nb.id); setActiveView('chat'); }} 
+                          variant="outline" 
+                          size="sm" 
+                          className="flex-1 rounded-xl text-xs"
+                        >
+                          Ver Conversas
+                        </Button>
+                        <Button 
+                          onClick={() => createNewChat(nb.id)} 
+                          size="sm" 
+                          className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs"
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1" /> Novo Chat Aqui
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
         )}
 
+        {/* 3. VIEW: CHAT & RESOLUTION */}
         {activeView === 'chat' && (
           <>
             <div className="flex-1 overflow-y-auto px-4 md:px-12 scrollbar-hide z-10 flex flex-col relative">
@@ -672,24 +1004,32 @@ export default function ExamSolverGrand() {
               {isDataLoading ? (
                 <div className="max-w-4xl mx-auto w-full space-y-8 pb-40 pt-10">
                   <div className="flex gap-4 justify-end">
-                    <div className="w-48 h-12 bg-zinc-200/60 dark:bg-zinc-800/60 rounded-3xl rounded-tr-sm animate-pulse"></div>
+                    <div className="w-48 h-12 bg-zinc-200/60 dark:bg-zinc-800/60 rounded-2xl rounded-tr-sm animate-pulse"></div>
                   </div>
                   <div className="flex gap-4 justify-start">
                     <div className="w-8 h-8 rounded-full bg-zinc-200/60 dark:bg-zinc-800/60 animate-pulse shrink-0 mt-1"></div>
-                    <div className="w-full max-w-lg h-32 bg-zinc-200/40 dark:bg-zinc-800/40 rounded-3xl rounded-tl-sm animate-pulse"></div>
+                    <div className="w-full max-w-lg h-32 bg-zinc-200/40 dark:bg-zinc-800/40 rounded-2xl rounded-tl-sm animate-pulse"></div>
                   </div>
                 </div>
               ) : messages.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-end max-w-3xl mx-auto w-full pb-10">
-                  <motion.h1 
+                <div className="flex-1 flex flex-col items-center justify-center max-w-3xl mx-auto w-full pb-20">
+                  <motion.div 
                     initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-                    className="text-3xl md:text-4xl font-semibold text-zinc-900 dark:text-zinc-100 mb-6 text-center"
+                    className="text-center"
                   >
-                    Como posso ajudar, estudante?
-                  </motion.h1>
+                    <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-indigo-500/20">
+                      <BrainCircuit className="w-8 h-8 text-white" />
+                    </div>
+                    <h1 className="text-3xl md:text-4xl font-bold text-zinc-900 dark:text-zinc-100 mb-3">
+                      Como posso te ajudar hoje?
+                    </h1>
+                    <p className="text-zinc-500 text-sm md:text-base max-w-md mx-auto">
+                      Envie uma imagem de prova, questão de concurso ou digite seu exercício para resolução acadêmica com precisão zero-alucinação.
+                    </p>
+                  </motion.div>
                 </div>
               ) : (
-                <div className="max-w-4xl mx-auto w-full space-y-8 pb-40 pt-4">
+                <div className="max-w-4xl mx-auto w-full space-y-8 pb-44 pt-6">
                   {messages.map((msg, idx) => (
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                       {msg.role === 'ai' && (
@@ -697,10 +1037,10 @@ export default function ExamSolverGrand() {
                           <BrainCircuit className="w-4 h-4 text-white" />
                         </div>
                       )}
-                      <div className={`max-w-[85%] md:max-w-[75%] ${msg.role === 'user' ? 'bg-white/50 dark:bg-zinc-900/50 backdrop-blur-md border border-zinc-200/50 dark:border-zinc-800/50 text-zinc-900 dark:text-zinc-100 px-5 py-3.5 rounded-2xl rounded-tr-sm shadow-sm' : 'text-zinc-800 dark:text-zinc-200 px-2 py-1'}`}>
+                      <div className={`max-w-[85%] md:max-w-[75%] ${msg.role === 'user' ? 'bg-white/70 dark:bg-zinc-900/70 backdrop-blur-md border border-zinc-200/60 dark:border-zinc-800/60 text-zinc-900 dark:text-zinc-100 px-5 py-3.5 rounded-2xl rounded-tr-sm shadow-sm' : 'text-zinc-800 dark:text-zinc-200 px-2 py-1'}`}>
                         {msg.image_url && (
-                          <div className="mb-3">
-                            <Image src={msg.image_url!} alt="Uploaded" width={400} height={400} unoptimized className="max-w-sm w-full h-auto rounded-2xl shadow-sm border border-zinc-200 dark:border-zinc-700" />
+                          <div className="mb-3 cursor-pointer group" onClick={() => setSelectedGalleryImage({ id: msg.id, url: msg.image_url!, created_at: '', conversation_id: currentConvId || '' })}>
+                            <Image src={msg.image_url!} alt="Uploaded" width={400} height={400} unoptimized className="max-w-sm w-full h-auto rounded-2xl shadow-sm border border-zinc-200 dark:border-zinc-700 group-hover:opacity-95 transition" />
                           </div>
                         )}
                         {msg.content === "" && isStreaming && idx === messages.length - 1 ? (
@@ -723,7 +1063,7 @@ export default function ExamSolverGrand() {
             </div>
 
             {/* ---------------- FLOATING INPUT AREA ---------------- */}
-            <div className={`left-0 right-0 w-full px-4 md:px-12 transition-all duration-700 z-30 flex flex-col items-center justify-end pointer-events-none ${messages.length === 0 ? 'relative pb-[20vh]' : 'absolute bottom-0 pb-8 bg-gradient-to-t from-[#f9f9fa] via-[#f9f9fa]/80 dark:from-[#131314] dark:via-[#131314]/80 to-transparent'}`}>
+            <div className={`left-0 right-0 w-full px-4 md:px-12 transition-all duration-700 z-30 flex flex-col items-center justify-end pointer-events-none ${messages.length === 0 ? 'relative pb-[15vh]' : 'absolute bottom-0 pb-8 bg-gradient-to-t from-zinc-50 via-zinc-50/80 dark:from-zinc-950 dark:via-zinc-950/80 to-transparent'}`}>
               <div className="max-w-3xl w-full pointer-events-auto">
                 
                 {/* Input Container */}
@@ -735,7 +1075,7 @@ export default function ExamSolverGrand() {
                       <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="px-6 pt-4 pb-1">
                         <div className="relative inline-block group">
                           <Image src={imageBase64!} alt="Preview" width={64} height={64} unoptimized className="h-16 w-16 object-cover rounded-xl border border-zinc-200 dark:border-zinc-700 shadow-sm" />
-                          <button onClick={() => {setImageFile(null); setImageBase64(null);}} className="absolute -top-2 -right-2 bg-zinc-800 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
+                          <button onClick={() => { setImageFile(null); setImageBase64(null); }} className="absolute -top-2 -right-2 bg-zinc-800 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
                             <X className="w-3 h-3" />
                           </button>
                         </div>
@@ -764,7 +1104,7 @@ export default function ExamSolverGrand() {
                               <Paperclip className="w-4 h-4 text-zinc-500" /> Carregar ficheiros
                             </button>
                             <button onClick={handleDrivePicker} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-left">
-                              <Cloud className="w-4 h-4 text-blue-500" /> Adicionar a partir do Drive
+                              <Cloud className="w-4 h-4 text-blue-500" /> Adicionar do Google Drive
                             </button>
                             <div className="border-t border-zinc-100 dark:border-zinc-800 my-1"></div>
                             <button onClick={startCamera} className="w-full flex items-center justify-between px-4 py-3 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-left">
@@ -780,7 +1120,7 @@ export default function ExamSolverGrand() {
                     <Textarea 
                       value={inputText}
                       onChange={(e) => setInputText(e.target.value)}
-                      placeholder="Pergunte qualquer coisa..."
+                      placeholder="Pergunte qualquer coisa ou cole sua prova..."
                       className="min-h-[24px] max-h-40 bg-transparent border-0 focus-visible:ring-0 resize-none py-3 px-1 text-[15px] dark:text-zinc-100 text-zinc-900 placeholder:text-zinc-400 scrollbar-hide flex-1"
                       rows={1}
                       onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
@@ -795,9 +1135,9 @@ export default function ExamSolverGrand() {
                           <ChevronDown className="w-3.5 h-3.5" />
                         </button>
                         {isModelDropdownOpen && (
-                          <div className="absolute bottom-full right-0 mb-2 w-40 bg-white dark:bg-[#252528] border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden py-1 z-50">
-                            <button onClick={() => {setModelMode("gemini-1.5-flash"); setIsModelDropdownOpen(false);}} className="w-full text-left px-4 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700">Instant (Rápido)</button>
-                            <button onClick={() => {setModelMode("gemini-1.5-pro"); setIsModelDropdownOpen(false);}} className="w-full text-left px-4 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700">Pro (Complexo)</button>
+                          <div className="absolute bottom-full right-0 mb-2 w-44 bg-white dark:bg-[#252528] border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden py-1 z-50">
+                            <button onClick={() => { setModelMode("gemini-1.5-flash"); setIsModelDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700">Instant (Flash)</button>
+                            <button onClick={() => { setModelMode("gemini-1.5-pro"); setIsModelDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700">Pro (Raciocínio)</button>
                           </div>
                         )}
                       </div>
@@ -813,18 +1153,18 @@ export default function ExamSolverGrand() {
 
                       <button 
                         onClick={handleSubmit}
-                        disabled={isStreaming || (!inputText.trim() && !imageFile)}
-                        className={`p-2.5 rounded-full transition-all duration-300 shadow-sm ml-1 ${inputText.trim() || imageFile ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:scale-105' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500'}`}
+                        disabled={isStreaming || (!inputText.trim() && !imageFile && !imageBase64)}
+                        className={`p-2.5 rounded-full transition shadow-sm ${inputText.trim() || imageFile || imageBase64 ? 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed'}`}
                       >
                         <ArrowUp className="w-5 h-5" />
                       </button>
+
                     </div>
                   </div>
                 </div>
 
-                {/* Subtext */}
-                <p className="text-center text-[11.5px] text-zinc-400 dark:text-zinc-500 mt-4 font-medium px-4">
-                  A IA pode cometer erros. Ao usar o ExamSolver, você concorda com nossos <button onClick={() => setIsPrivacyOpen(true)} className="underline hover:text-zinc-600 dark:hover:text-zinc-300">Termos</button> e <button onClick={() => setIsPrivacyOpen(true)} className="underline hover:text-zinc-600 dark:hover:text-zinc-300">Política de privacidade</button>.
+                <p className="text-center text-[11px] text-zinc-400 mt-2">
+                  A IA pode cometer erros. Ao usar o ExamSolver, você concorda com nossos Termos e Política de privacidade.
                 </p>
               </div>
             </div>
@@ -832,68 +1172,325 @@ export default function ExamSolverGrand() {
         )}
       </main>
 
-      {/* ---------------- CAMERA MODAL ---------------- */}
+      {/* ---------------- MODAL: CONFIGURAÇÕES DE CONTA ---------------- */}
       <AnimatePresence>
-        {isCameraOpen && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+        {isSettingsOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-black border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl max-w-xl w-full"
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative"
             >
-              <div className="flex items-center justify-between p-4 border-b border-zinc-800">
-                <h3 className="text-white font-medium">Tirar Foto</h3>
-                <button onClick={stopCamera} className="text-zinc-400 hover:text-white transition"><X className="w-5 h-5"/></button>
-              </div>
-              <div className="relative bg-zinc-900 aspect-video flex items-center justify-center">
-                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-              </div>
-              <div className="p-4 flex justify-center border-t border-zinc-800">
-                <button onClick={takePhoto} className="w-16 h-16 rounded-full border-4 border-zinc-500 hover:border-white transition flex items-center justify-center group">
-                  <div className="w-12 h-12 bg-white rounded-full group-active:scale-90 transition"></div>
-                </button>
+              <button onClick={() => { setIsSettingsOpen(false); setSettingsMessage(null); }} className="absolute top-6 right-6 p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
+                <X className="w-5 h-5" />
+              </button>
+
+              <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 mb-1 flex items-center gap-2">
+                <Settings className="w-6 h-6 text-indigo-500" /> Definições de Conta
+              </h2>
+              <p className="text-sm text-zinc-500 mb-6">Gerencie seu perfil, saldo de créditos e preferências do sistema.</p>
+
+              {settingsMessage && (
+                <div className="mb-4 p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 text-xs font-medium">
+                  {settingsMessage}
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {/* Profile Card */}
+                <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700/50 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-base shadow-sm">
+                      {user?.email ? user.email.slice(0, 2).toUpperCase() : <User className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">{user?.email || "Convidado"}</p>
+                      <p className="text-xs text-zinc-500">{user ? "Plano ExamSolver Pro" : "Acesso Convidado"}</p>
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-500 uppercase tracking-wider">
+                    {user ? "Ativo" : "Demo"}
+                  </span>
+                </div>
+
+                {/* Credits Balance Card */}
+                <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700/50 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs text-zinc-500 uppercase font-semibold tracking-wider">Saldo de Créditos</span>
+                    <p className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 mt-0.5">{credits} Créditos</p>
+                  </div>
+                  <Button 
+                    onClick={refreshCredits} 
+                    variant="outline" 
+                    size="sm" 
+                    disabled={isRefreshingCredits || !user}
+                    className="rounded-xl flex items-center gap-1.5 text-xs"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingCredits ? 'animate-spin' : ''}`} /> Sincronizar
+                  </Button>
+                </div>
+
+                {/* Preferences */}
+                <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-zinc-900 dark:text-zinc-200">Aparência do Sistema</p>
+                      <p className="text-xs text-zinc-500">Alternar entre tema escuro e claro</p>
+                    </div>
+                    <Button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} variant="outline" size="sm" className="rounded-xl text-xs">
+                      {theme === 'dark' ? "Modo Claro" : "Modo Escuro"}
+                    </Button>
+                  </div>
+
+                  {user && (
+                    <div className="flex items-center justify-between pt-2">
+                      <div>
+                        <p className="text-sm font-medium text-zinc-900 dark:text-zinc-200">Segurança da Conta</p>
+                        <p className="text-xs text-zinc-500">Redefinir senha de acesso</p>
+                      </div>
+                      <Button onClick={handleResetPassword} variant="outline" size="sm" className="rounded-xl text-xs flex items-center gap-1.5">
+                        <Key className="w-3.5 h-3.5" /> Redefinir Senha
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+                  {user ? (
+                    <Button onClick={handleSignOut} variant="destructive" size="sm" className="rounded-xl text-xs flex items-center gap-1.5">
+                      <LogOut className="w-3.5 h-3.5" /> Terminar Sessão
+                    </Button>
+                  ) : (
+                    <Button onClick={() => router.push("/login")} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs">
+                      Iniciar Sessão
+                    </Button>
+                  )}
+                  <Button onClick={() => setIsSettingsOpen(false)} variant="ghost" size="sm" className="rounded-xl text-xs">
+                    Fechar
+                  </Button>
+                </div>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* ---------------- PRIVACY / TERMS MODAL ---------------- */}
+      {/* ---------------- MODAL: NOVO CADERNO ---------------- */}
       <AnimatePresence>
-        {isPrivacyOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+        {isNewNotebookModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-white dark:bg-[#1e1e20] w-full max-w-2xl max-h-[85vh] rounded-[2rem] shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col"
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative"
             >
-              <div className="flex items-center justify-between p-6 border-b border-zinc-100 dark:border-zinc-800/60">
-                <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Termos e Privacidade</h2>
-                <button onClick={() => setIsPrivacyOpen(false)} className="p-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition">
-                  <X className="w-5 h-5" />
+              <button onClick={() => setIsNewNotebookModalOpen(false)} className="absolute top-6 right-6 p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
+                <X className="w-5 h-5" />
+              </button>
+
+              <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 mb-1 flex items-center gap-2">
+                <FolderPlus className="w-5 h-5 text-indigo-500" /> Criar Novo Caderno
+              </h2>
+              <p className="text-xs text-zinc-500 mb-5">Escolha um nome e uma cor temática para sua matéria.</p>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1.5">Nome da Matéria / Caderno</label>
+                  <input 
+                    type="text"
+                    value={newNotebookName}
+                    onChange={(e) => setNewNotebookName(e.target.value)}
+                    placeholder="Ex: Física Quântica, Álgebra Linear..."
+                    className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-zinc-900 dark:text-zinc-100"
+                    autoFocus
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-2">Cor do Caderno</label>
+                  <div className="flex items-center gap-3">
+                    {[
+                      { id: 'indigo', bg: 'bg-indigo-500' },
+                      { id: 'emerald', bg: 'bg-emerald-500' },
+                      { id: 'amber', bg: 'bg-amber-500' },
+                      { id: 'rose', bg: 'bg-rose-500' },
+                    ].map(c => (
+                      <button 
+                        key={c.id} 
+                        type="button"
+                        onClick={() => setNewNotebookColor(c.id)}
+                        className={`w-8 h-8 rounded-full ${c.bg} flex items-center justify-center transition-all ${newNotebookColor === c.id ? 'ring-4 ring-indigo-500/30 scale-110' : 'opacity-70 hover:opacity-100'}`}
+                      >
+                        {newNotebookColor === c.id && <Check className="w-4 h-4 text-white" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-4">
+                  <Button onClick={() => setIsNewNotebookModalOpen(false)} variant="ghost" size="sm" className="rounded-xl text-xs">
+                    Cancelar
+                  </Button>
+                  <Button onClick={createNotebook} disabled={!newNotebookName.trim()} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs">
+                    Criar Caderno
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------------- MODAL: MOVER CHAT PARA CADERNO ---------------- */}
+      <AnimatePresence>
+        {movingConvId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl relative"
+            >
+              <button onClick={() => setMovingConvId(null)} className="absolute top-6 right-6 p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
+                <X className="w-5 h-5" />
+              </button>
+
+              <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 mb-1 flex items-center gap-2">
+                <Folder className="w-5 h-5 text-indigo-500" /> Mover Conversa
+              </h2>
+              <p className="text-xs text-zinc-500 mb-4">Selecione o caderno onde deseja guardar este chat:</p>
+
+              <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                <button 
+                  onClick={() => moveConversationToNotebook(movingConvId, null)}
+                  className="w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400 transition"
+                >
+                  Nenhum Caderno (Geral)
                 </button>
+                {notebooks.map(nb => (
+                  <button 
+                    key={nb.id}
+                    onClick={() => moveConversationToNotebook(movingConvId, nb.id)}
+                    className="w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-900 dark:text-zinc-100 transition flex items-center gap-2"
+                  >
+                    <span className={`w-2.5 h-2.5 rounded-full ${nb.color === 'emerald' ? 'bg-emerald-500' : nb.color === 'amber' ? 'bg-amber-500' : nb.color === 'rose' ? 'bg-rose-500' : 'bg-indigo-500'}`} />
+                    {nb.name}
+                  </button>
+                ))}
               </div>
-              <div className="p-8 overflow-y-auto prose prose-sm dark:prose-invert max-w-none text-zinc-600 dark:text-zinc-300">
-                <h3>Introdução e Termos</h3>
-                <p>Bem-vindo ao Exam Solver AI, uma plataforma avançada de assistência acadêmica criada por <strong>José Escrivão</strong>. Ao utilizar nosso software, você concorda em utilizá-lo estritamente para propósitos educacionais.</p>
-                
-                <h3>Dados Coletados e Sua Exclusão (Cascata)</h3>
-                <p>Quando você utiliza nossos serviços, armazenamos temporariamente suas <strong>imagens, textos e cadernos de estudo</strong> para fornecer continuidade nos chats. No entanto, aplicamos uma rigorosa política de <em>Cascade Delete</em> (Exclusão em Cascata). <strong>Isso significa que, assim que você exclui um chat, todos os registros, imagens e análises associadas a ele são sumariamente apagados de nossos servidores, de forma irreversível.</strong></p>
-                
-                <h3>Uso da Inteligência Artificial</h3>
-                <p>O envio de imagens e perguntas é processado por motores de inteligência artificial de ponta (Gemini-Vision). O conteúdo que você envia não é utilizado para treinar nossos modelos publicamente, sendo restrito apenas à sua sessão de estudo.</p>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
-                <h3>Cadernos de Estudo e &quot;Minhas Imagens&quot;</h3>
-                <p>As visões de &quot;Cadernos de Estudo&quot; e &quot;Minhas Imagens&quot; funcionam apenas como um reflexo dos seus chats ativos. A privacidade é garantida pelo modelo: apagar a origem apaga o reflexo.</p>
+      {/* ---------------- MODAL: GOOGLE DRIVE LINK / IMPORT ---------------- */}
+      <AnimatePresence>
+        {isDriveModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative"
+            >
+              <button onClick={() => setIsDriveModalOpen(false)} className="absolute top-6 right-6 p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
+                <X className="w-5 h-5" />
+              </button>
 
-                <h3>Contato</h3>
-                <p>Se tiver dúvidas sobre nossa blindagem de dados ou sugerir melhorias no sistema, sinta-se à vontade para nos contactar. Exam Solver AI, focado na sua vitória acadêmica de forma segura.</p>
+              <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 mb-1 flex items-center gap-2">
+                <Cloud className="w-5 h-5 text-blue-500" /> Adicionar do Google Drive
+              </h2>
+              <p className="text-xs text-zinc-500 mb-5">Cole o link de compartilhamento de qualquer foto ou documento do Google Drive:</p>
+
+              <div className="space-y-4">
+                <div>
+                  <input 
+                    type="url"
+                    value={driveUrlInput}
+                    onChange={(e) => setDriveUrlInput(e.target.value)}
+                    placeholder="https://drive.google.com/file/d/..."
+                    className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-zinc-900 dark:text-zinc-100"
+                    autoFocus
+                  />
+                  <p className="text-[11px] text-zinc-400 mt-1.5">Dica: No Drive, clique em &quot;Compartilhar&quot; e copie o link do arquivo.</p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <Button onClick={() => setIsDriveModalOpen(false)} variant="ghost" size="sm" className="rounded-xl text-xs">
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleDriveUrlSubmit} disabled={!driveUrlInput.trim()} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs">
+                    Importar Arquivo
+                  </Button>
+                </div>
               </div>
-              <div className="p-6 border-t border-zinc-100 dark:border-zinc-800/60 flex justify-end bg-zinc-50 dark:bg-[#1a1a1c]">
-                <Button onClick={() => setIsPrivacyOpen(false)} className="rounded-full bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 px-8">
-                  Concordar e Fechar
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------------- MODAL: VISUALIZAÇÃO DE IMAGEM DA GALERIA ---------------- */}
+      <AnimatePresence>
+        {selectedGalleryImage && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 max-w-2xl w-full shadow-2xl relative flex flex-col"
+            >
+              <button onClick={() => setSelectedGalleryImage(null)} className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-white rounded-full bg-zinc-800 transition">
+                <X className="w-5 h-5" />
+              </button>
+
+              <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                <ImageIcon className="w-5 h-5 text-indigo-400" /> Detalhes da Imagem
+              </h3>
+
+              <div className="relative aspect-video max-h-[60vh] w-full rounded-2xl overflow-hidden bg-black/40 border border-zinc-800 mb-4 flex items-center justify-center">
+                <Image src={selectedGalleryImage.url} alt="Expanded" fill unoptimized className="object-contain" />
+              </div>
+
+              <div className="flex items-center justify-between gap-3 pt-2">
+                <Button 
+                  onClick={() => {
+                    setImageBase64(selectedGalleryImage.url);
+                    setSelectedGalleryImage(null);
+                    setActiveView('chat');
+                  }}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs flex items-center gap-2 flex-1"
+                >
+                  <BrainCircuit className="w-4 h-4" /> Resolver com a IA
+                </Button>
+                {selectedGalleryImage.conversation_id && (
+                  <Button 
+                    onClick={() => {
+                      loadConversation(selectedGalleryImage.conversation_id);
+                      setSelectedGalleryImage(null);
+                    }}
+                    variant="outline" 
+                    className="rounded-xl text-xs flex-1 text-zinc-300 border-zinc-700"
+                  >
+                    Ir para o Chat Original
+                  </Button>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------------- MODAL: WEBCAM / CÂMERA ---------------- */}
+      <AnimatePresence>
+        {isCameraOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 max-w-md w-full shadow-2xl relative">
+              <button onClick={stopCamera} className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-white rounded-full bg-zinc-800 transition">
+                <X className="w-5 h-5" />
+              </button>
+              <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                <Camera className="w-5 h-5 text-indigo-400" /> Capturar Foto da Prova
+              </h3>
+              <div className="relative aspect-video rounded-2xl overflow-hidden bg-black mb-4">
+                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+              </div>
+              <div className="flex justify-center gap-4">
+                <Button onClick={stopCamera} variant="outline" className="rounded-xl text-xs text-zinc-300 border-zinc-700">Cancelar</Button>
+                <Button onClick={takePhoto} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs flex items-center gap-2">
+                  <Camera className="w-4 h-4" /> Tirar Foto
                 </Button>
               </div>
             </motion.div>

@@ -79,13 +79,52 @@ export async function POST(req: Request) {
     }
 
     const userMessageContent = text || "Imagem enviada";
+    let imageUrl: string | null = null;
+    let groqImageUrl: string | null = null;
+    const promptParts: Part[] = [];
+
+    if (file) {
+      const validMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+      if (!validMimeTypes.includes(file.type)) {
+        return new Response(JSON.stringify({ error: "Formato inválido. Use JPG, PNG ou WEBP." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      const base64Data = arrayBufferToBase64(await file.arrayBuffer());
+      imageUrl = `data:${file.type};base64,${base64Data}`;
+      groqImageUrl = imageUrl;
+      promptParts.push({
+        inlineData: {
+          data: base64Data,
+          mimeType: file.type,
+        },
+      });
+    }
+
+    if (text) promptParts.push({ text: `Pergunta atual do usuário: ${text}` });
     
     if (!isGuest && conversationId && conversationId !== "guest") {
-      await supabase.from("messages").insert({
+      const { error: insertErr } = await supabase.from("messages").insert({
         conversation_id: conversationId,
         role: 'user',
-        content: userMessageContent
+        content: userMessageContent,
+        image_url: imageUrl
       });
+      if (insertErr) {
+        await supabase.from("messages").insert({
+          conversation_id: conversationId,
+          role: 'user',
+          content: userMessageContent
+        });
+      }
+
+      if (imageUrl && user) {
+        await supabase.from("exams").insert({
+          user_id: user.id,
+          image_url: imageUrl,
+          question_text: text || "Resolução de imagem",
+          mode: 'estudo'
+        });
+      }
     }
 
     let chatHistory: Content[] = [];
@@ -126,27 +165,6 @@ export async function POST(req: Request) {
 
         chatHistory = sanitized;
       }
-    }
-
-    const promptParts: Part[] = [];
-    if (text) promptParts.push({ text: `Pergunta atual do usuário: ${text}` });
-    
-    let groqImageUrl = null;
-
-    if (file) {
-      const validMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
-      if (!validMimeTypes.includes(file.type)) {
-        return new Response(JSON.stringify({ error: "Formato inválido. Use JPG, PNG ou WEBP." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
-      }
-
-      const base64Data = arrayBufferToBase64(await file.arrayBuffer());
-      promptParts.push({
-        inlineData: {
-          data: base64Data,
-          mimeType: file.type,
-        },
-      });
-      groqImageUrl = `data:${file.type};base64,${base64Data}`;
     }
 
     const stream = new ReadableStream({
