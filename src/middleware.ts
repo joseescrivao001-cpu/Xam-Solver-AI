@@ -37,14 +37,19 @@ export async function middleware(request: NextRequest) {
 
     // 1. Blindagem por UUID Estático ou E-mail Mestre
     const MASTER_ADMIN_EMAIL = "joseescrivao001@gmail.com";
-    const DEFAULT_ADMIN_UUID = "07167607-a59a-48ce-a5b9-1dcc6f01f2f0";
+    const MASTER_ADMIN_UUIDS = [
+      "604c5dee-7dd6-4590-9f11-9df9043803f2",
+      "07167607-a59a-48ce-a5b9-1dcc6f01f2f0"
+    ];
     const configuredAdminId = process.env.ADMIN_USER_ID?.trim();
     const allowedAdminIds = configuredAdminId
       ? configuredAdminId.split(',').map((id) => id.trim()).filter(Boolean)
-      : [DEFAULT_ADMIN_UUID];
+      : [...MASTER_ADMIN_UUIDS];
 
-    if (!allowedAdminIds.includes(DEFAULT_ADMIN_UUID)) {
-      allowedAdminIds.push(DEFAULT_ADMIN_UUID);
+    for (const masterId of MASTER_ADMIN_UUIDS) {
+      if (!allowedAdminIds.includes(masterId)) {
+        allowedAdminIds.push(masterId);
+      }
     }
 
     const isMatchAdmin = !!(

@@ -14,7 +14,10 @@ export interface AdminAuthResult {
  * Suporta também múltiplos IDs separados por vírgula.
  */
 const MASTER_ADMIN_EMAIL = "joseescrivao001@gmail.com";
-const DEFAULT_ADMIN_UUID = "07167607-a59a-48ce-a5b9-1dcc6f01f2f0";
+const MASTER_ADMIN_UUIDS = [
+  "604c5dee-7dd6-4590-9f11-9df9043803f2",
+  "07167607-a59a-48ce-a5b9-1dcc6f01f2f0"
+];
 
 export function isSuperAdmin(userId?: string | null, userEmail?: string | null): boolean {
   if (!userId && !userEmail) return false;
@@ -27,10 +30,12 @@ export function isSuperAdmin(userId?: string | null, userEmail?: string | null):
   const configuredAdminId = process.env.ADMIN_USER_ID?.trim();
   const allowedIds = configuredAdminId
     ? configuredAdminId.split(',').map((id) => id.trim()).filter(Boolean)
-    : [DEFAULT_ADMIN_UUID];
+    : [...MASTER_ADMIN_UUIDS];
 
-  if (!allowedIds.includes(DEFAULT_ADMIN_UUID)) {
-    allowedIds.push(DEFAULT_ADMIN_UUID);
+  for (const masterId of MASTER_ADMIN_UUIDS) {
+    if (!allowedIds.includes(masterId)) {
+      allowedIds.push(masterId);
+    }
   }
 
   return !!(userId && allowedIds.includes(userId));
