@@ -65,10 +65,10 @@ export default function PricingModal({
   const ultraAoaFormatted = paymentSettings?.plans?.ultra?.formatted_aoa || "19.000 Kz";
   const premiumAoaFormatted = paymentSettings?.plans?.premium?.formatted_aoa || "39.000 Kz";
   const exchangeRate = paymentSettings?.usd_to_aoa_rate || 950;
-  const bankName = paymentSettings?.bank_name || "BFA / BAI";
+  const bankName = paymentSettings?.bank_name || "";
   const accountHolder = paymentSettings?.account_holder || "José Escrivão Silvestre";
   const expressPhone = paymentSettings?.express_phone || "+244 930 339 436";
-  const iban = paymentSettings?.iban || "AO06.0040.0000.0000.0000.0000.0";
+  const iban = paymentSettings?.iban || "";
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -86,28 +86,11 @@ export default function PricingModal({
     }
   };
 
-  const handleStripeCheckout = async (plan: 'ultra' | 'premium') => {
-    setIsSubmitting(true);
-    setFeedback(null);
-    try {
-      const res = await fetch("/api/checkout/stripe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan_type: plan })
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        throw new Error(data.error || "Erro ao gerar checkout.");
-      }
-    } catch (err) {
-      setFeedback({
-        text: err instanceof Error ? err.message : "Erro ao processar Stripe. Tente usar Multicaixa Express.",
-        type: 'error'
-      });
-      setIsSubmitting(false);
-    }
+  const handleVisaClick = () => {
+    setFeedback({
+      text: "Configuração ativa em breve. Por favor, utilize a opção Multicaixa Express para ativação imediata.",
+      type: 'error'
+    });
   };
 
   const handleMCXSubmit = async () => {
@@ -156,6 +139,13 @@ export default function PricingModal({
     }
   };
 
+  const handleCloseAll = () => {
+    onClose();
+    setPaymentMethod(null);
+    setSelectedPlan(null);
+    setFeedback(null);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
       <motion.div
@@ -168,23 +158,43 @@ export default function PricingModal({
         <div className="absolute top-[-15%] left-[10%] w-[40%] h-[40%] rounded-full bg-violet-600/20 blur-[120px] pointer-events-none" />
         <div className="absolute bottom-[-15%] right-[10%] w-[40%] h-[40%] rounded-full bg-amber-500/15 blur-[120px] pointer-events-none" />
 
-        {/* Top Navigation Bar: Voltar ao Chat + Fechar */}
+        {/* Top Navigation Bar: SEMPRE VISÍVEL com Voltar ao Chat em destaque */}
         <div className="flex items-center justify-between pb-4 mb-6 border-b border-zinc-800/80 relative z-20">
-          <button
-            onClick={() => { onClose(); setPaymentMethod(null); setSelectedPlan(null); }}
-            className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-xs font-semibold text-zinc-200 hover:text-white transition shadow-sm cursor-pointer"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" /> Voltar ao Chat
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Se estiver dentro de um fluxo de plano, botão para voltar um passo */}
+            {selectedPlan && (
+              <button
+                onClick={() => {
+                  if (paymentMethod) {
+                    setPaymentMethod(null);
+                  } else {
+                    setSelectedPlan(null);
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-xs font-semibold text-zinc-300 hover:text-white transition cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                {paymentMethod ? "Mudar Método" : "Ver Todos os Planos"}
+              </button>
+            )}
+
+            {/* Botão de Voltar ao Chat SEMPRE PRESENTE */}
+            <button
+              onClick={handleCloseAll}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Voltar ao Chat
+            </button>
+          </div>
           
           <div className="flex items-center gap-3">
             {isLoadingSettings && (
-              <span className="text-[11px] text-zinc-500 flex items-center gap-1">
-                <RefreshCw className="w-3 h-3 animate-spin" /> Atualizando câmbio...
+              <span className="text-[11px] text-zinc-500 hidden sm:flex items-center gap-1">
+                <RefreshCw className="w-3 h-3 animate-spin" /> Atualizando...
               </span>
             )}
             <button
-              onClick={() => { onClose(); setPaymentMethod(null); setSelectedPlan(null); }}
+              onClick={handleCloseAll}
               className="p-2 text-zinc-400 hover:text-white rounded-full bg-zinc-900 border border-zinc-800 transition cursor-pointer"
               title="Fechar Janela"
             >
@@ -202,7 +212,7 @@ export default function PricingModal({
             Escolha o Plano Ideal para Seus Estudos
           </h2>
           <p className="text-zinc-400 text-xs sm:text-sm mt-2">
-            Acesso ao cluster de inteligência artificial com Meta LLaMA 3.3 70B, Google DeepMind e Roteador Neural Indestrutível com Failover automático.
+            Cluster corporativo de inteligência artificial com Meta LLaMA 3.3 70B, Google DeepMind e Roteador Neural com Failover automático.
           </p>
           {userEmail && (
             <p className="text-[11px] text-indigo-400/90 mt-1.5 font-mono">
@@ -222,8 +232,8 @@ export default function PricingModal({
           </div>
         )}
 
-        {/* ---------------- PRICING CARDS VIEW ---------------- */}
-        {!paymentMethod && (
+        {/* ---------------- PASSO 1: CARDS DE PLANOS (Apenas quando nenhum plano selecionado) ---------------- */}
+        {!selectedPlan && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10 items-stretch">
             
             {/* 1. PLANO PRO (1.000 Créditos) */}
@@ -387,23 +397,16 @@ export default function PricingModal({
           </div>
         )}
 
-        {/* ---------------- CHECKOUT & GATEWAY SELECTION ---------------- */}
+        {/* ---------------- PASSO 2: ESCOLHA DO MÉTODO DE PAGAMENTO ---------------- */}
         {selectedPlan && !paymentMethod && (
           <div className="max-w-xl mx-auto py-4 relative z-10">
-            <button 
-              onClick={() => setSelectedPlan(null)}
-              className="text-xs text-zinc-400 hover:text-white mb-6 flex items-center gap-1.5 cursor-pointer"
-            >
-              ← Voltar à seleção de planos
-            </button>
-
             <div className="p-6 rounded-3xl bg-zinc-900 border border-zinc-800 shadow-xl text-center mb-6">
               <span className="text-xs font-bold uppercase tracking-wider text-indigo-400">Plano Selecionado</span>
               <h3 className="text-2xl font-bold text-white mt-1">
                 {selectedPlan === 'ultra' ? 'Plano Ultra (1.000.000 Créditos)' : 'Plano Premium VIP (Ilimitado)'}
               </h3>
               <p className="text-zinc-400 text-sm mt-1">
-                Valor Oficial: <strong>{selectedPlan === 'ultra' ? `${ultraAoaFormatted} ($19 USD)` : `${premiumAoaFormatted} ($39 USD)`}</strong>
+                Valor Oficial: <strong className="text-emerald-400">{selectedPlan === 'ultra' ? `${ultraAoaFormatted} ($19 USD)` : `${premiumAoaFormatted} ($39 USD)`}</strong>
               </p>
               <p className="text-[11px] text-zinc-500 mt-1">
                 * Conversão cambial em tempo real: 1 USD ≈ {exchangeRate} Kz
@@ -418,41 +421,37 @@ export default function PricingModal({
               {/* Option: Multicaixa Express */}
               <button
                 onClick={() => setPaymentMethod('mcx')}
-                className="p-6 rounded-2xl bg-zinc-900/90 border border-zinc-800 hover:border-indigo-500/60 hover:bg-zinc-800/80 transition flex flex-col items-center text-center group cursor-pointer shadow-md"
+                className="p-6 rounded-2xl bg-zinc-900/90 border-2 border-indigo-500/40 hover:border-indigo-500 hover:bg-zinc-800/80 transition flex flex-col items-center text-center group cursor-pointer shadow-md"
               >
                 <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 mb-3 group-hover:scale-110 transition">
                   <Smartphone className="w-6 h-6" />
                 </div>
                 <h5 className="font-bold text-white text-base">Multicaixa Express</h5>
-                <p className="text-xs text-zinc-400 mt-1">Pagamento local em Kwanzas via IBAN ou Telefone.</p>
+                <span className="text-[11px] font-bold text-emerald-400 mt-0.5">Disponível Agora</span>
+                <p className="text-xs text-zinc-400 mt-1">Pagamento local em Kwanzas via Telefone Express.</p>
               </button>
 
-              {/* Option: Stripe */}
+              {/* Option: Visa / Cartão Internacional */}
               <button
-                onClick={() => handleStripeCheckout(selectedPlan)}
-                disabled={isSubmitting}
-                className="p-6 rounded-2xl bg-zinc-900/90 border border-zinc-800 hover:border-violet-500/60 hover:bg-zinc-800/80 transition flex flex-col items-center text-center group cursor-pointer shadow-md"
+                onClick={handleVisaClick}
+                className="p-6 rounded-2xl bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/80 transition flex flex-col items-center text-center group cursor-pointer shadow-md opacity-90"
               >
                 <div className="w-12 h-12 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400 mb-3 group-hover:scale-110 transition">
-                  {isSubmitting ? <Loader2 className="w-6 h-6 animate-spin" /> : <CreditCard className="w-6 h-6" />}
+                  <CreditCard className="w-6 h-6" />
                 </div>
-                <h5 className="font-bold text-white text-base">Cartão Internacional</h5>
-                <p className="text-xs text-zinc-400 mt-1">Visa, Mastercard e American Express via Stripe.</p>
+                <h5 className="font-bold text-white text-base">Cartão / Visa</h5>
+                <span className="text-[11px] font-medium text-amber-400 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded-full mt-1">
+                  Configuração ativa em breve
+                </span>
+                <p className="text-xs text-zinc-400 mt-1.5">Visa, Mastercard e American Express.</p>
               </button>
             </div>
           </div>
         )}
 
-        {/* ---------------- MULTICAIXA EXPRESS (MCX) INSTRUCTIONS (DINÂMICAS DO BANCO DE DADOS) ---------------- */}
+        {/* ---------------- PASSO 3: INSTRUÇÕES MULTICAIXA EXPRESS (MCX) ---------------- */}
         {selectedPlan && paymentMethod === 'mcx' && (
           <div className="max-w-xl mx-auto py-2 relative z-10">
-            <button 
-              onClick={() => setPaymentMethod(null)}
-              className="text-xs text-zinc-400 hover:text-white mb-4 flex items-center gap-1.5 cursor-pointer"
-            >
-              ← Escolher outro método de pagamento
-            </button>
-
             <div className="p-6 rounded-3xl bg-zinc-900/90 border border-zinc-800 shadow-xl space-y-5">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
@@ -460,28 +459,23 @@ export default function PricingModal({
                 </div>
                 <div>
                   <h4 className="text-lg font-bold text-white">Instruções de Pagamento (MCX)</h4>
-                  <p className="text-xs text-zinc-400">Dados bancários obtidos com segurança do sistema.</p>
+                  <p className="text-xs text-zinc-400">Transfira o valor exato e anexe o comprovativo abaixo.</p>
                 </div>
               </div>
 
-              {/* Bank Details Card Dinâmico */}
+              {/* Card de Dados de Pagamento */}
               <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-zinc-500">Valor em Kwanza:</span>
+                  <span className="text-zinc-500">Valor a Transferir:</span>
                   <span className="font-bold text-emerald-400 text-sm">
                     {selectedPlan === 'ultra' ? ultraAoaFormatted : premiumAoaFormatted}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-zinc-900">
-                  <span className="text-zinc-500">Banco:</span>
-                  <span className="font-semibold text-zinc-200">{bankName}</span>
-                </div>
-                
-                <div className="flex items-center justify-between pt-2 border-t border-zinc-900">
                   <span className="text-zinc-500">Multicaixa Express (Telefone):</span>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-indigo-400 font-bold">{expressPhone}</span>
+                    <span className="font-mono text-indigo-400 font-bold text-sm">{expressPhone}</span>
                     <button onClick={() => copyToClipboard(expressPhone.replace(/\s+/g, ''), 'tel')} className="text-zinc-400 hover:text-white cursor-pointer" title="Copiar Telefone">
                       {copiedField === 'tel' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
@@ -493,15 +487,26 @@ export default function PricingModal({
                   <span className="font-semibold text-zinc-200">{accountHolder}</span>
                 </div>
 
-                <div className="flex items-center justify-between pt-2 border-t border-zinc-900">
-                  <span className="text-zinc-500">IBAN:</span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-zinc-300 text-[11px] truncate max-w-[200px]">{iban}</span>
-                    <button onClick={() => copyToClipboard(iban.replace(/[^a-zA-Z0-9]/g, ''), 'iban')} className="text-zinc-400 hover:text-white cursor-pointer" title="Copiar IBAN">
-                      {copiedField === 'iban' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    </button>
+                {/* Mostra o Banco apenas se estiver cadastrado no banco de dados */}
+                {bankName && bankName.trim() !== "" && (
+                  <div className="flex items-center justify-between pt-2 border-t border-zinc-900">
+                    <span className="text-zinc-500">Banco:</span>
+                    <span className="font-semibold text-zinc-200">{bankName}</span>
                   </div>
-                </div>
+                )}
+
+                {/* Mostra o IBAN APENAS se estiver cadastrado no banco de dados (sem valores falsos) */}
+                {iban && iban.trim() !== "" && !iban.includes("0000.0000") && (
+                  <div className="flex items-center justify-between pt-2 border-t border-zinc-900">
+                    <span className="text-zinc-500">IBAN:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-zinc-300 text-[11px] truncate max-w-[200px]">{iban}</span>
+                      <button onClick={() => copyToClipboard(iban.replace(/[^a-zA-Z0-9]/g, ''), 'iban')} className="text-zinc-400 hover:text-white cursor-pointer" title="Copiar IBAN">
+                        {copiedField === 'iban' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Upload Proof Input */}
@@ -519,11 +524,11 @@ export default function PricingModal({
                   <div className="flex flex-col items-center justify-center">
                     <Upload className="w-6 h-6 text-zinc-400 mb-1" />
                     {proofFile ? (
-                      <span className="text-xs font-medium text-emerald-400">{proofFile.name} (Anexado com Sucesso)</span>
+                      <span className="text-xs font-medium text-emerald-400">{proofFile.name} (Anexado)</span>
                     ) : (
                       <>
-                        <span className="text-xs font-medium text-zinc-300">Clique para anexar o print ou PDF do comprovativo</span>
-                        <span className="text-[10px] text-zinc-500 mt-0.5">Formatos: PNG, JPG, PDF (Validação automática)</span>
+                        <span className="text-xs font-medium text-zinc-300">Clique para selecionar o print do comprovativo</span>
+                        <span className="text-[10px] text-zinc-500 mt-0.5">Formatos suportados: PNG, JPG ou PDF</span>
                       </>
                     )}
                   </div>
@@ -537,9 +542,9 @@ export default function PricingModal({
                   className="w-full h-12 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/25 transition flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {isSubmitting ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Processando Comprovativo...</>
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Enviando Comprovativo...</>
                   ) : (
-                    "Enviar Comprovativo e Ativar Plano"
+                    "Enviar Comprovativo e Concluir"
                   )}
                 </Button>
               </div>
@@ -547,17 +552,17 @@ export default function PricingModal({
           </div>
         )}
 
-        {/* Modal Footer com Câmbio e Botão de Voltar ao Chat */}
+        {/* Modal Footer com Câmbio e Botão Fixo de Voltar ao Chat */}
         <div className="mt-8 pt-4 border-t border-zinc-800/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-zinc-500 relative z-10">
           <span className="flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
             Câmbio comercial em tempo real: 1 USD ≈ {exchangeRate} Kz
           </span>
           <button
-            onClick={() => { onClose(); setPaymentMethod(null); setSelectedPlan(null); }}
+            onClick={handleCloseAll}
             className="text-indigo-400 hover:text-indigo-300 font-medium underline cursor-pointer flex items-center gap-1"
           >
-            ← Voltar ao Chat e Continuar Estudando
+            ← Voltar ao Chat
           </button>
         </div>
 

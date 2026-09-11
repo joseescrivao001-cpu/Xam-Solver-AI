@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -58,7 +58,6 @@ export default function PricingPage() {
   const ultraAoa = paymentData?.plans?.ultra?.formatted_aoa || "19.000 Kz";
   const premiumAoa = paymentData?.plans?.premium?.formatted_aoa || "39.000 Kz";
   const exchangeRate = paymentData?.usd_to_aoa_rate || 950;
-  const bankName = paymentData?.bank_name || "BFA / BAI";
   const accountHolder = paymentData?.account_holder || "José Escrivão Silvestre";
   const expressPhone = paymentData?.express_phone || "+244 930 339 436";
 
@@ -314,7 +313,7 @@ export default function PricingPage() {
                 <Shield className="w-5 h-5 text-emerald-400" /> Métodos de Pagamento Seguros &amp; Câmbio Oficial
               </h3>
               <p className="text-sm text-zinc-400 max-w-xl">
-                Pagamentos locais em Kwanzas (Kz) via Multicaixa Express com dados administrados com segurança pelo sistema ({bankName}, titular {accountHolder}, telefone {expressPhone}), ou cartões internacionais via Stripe.
+                Pagamentos locais em Kwanzas (Kz) via Multicaixa Express com dados gerenciados pelo sistema (titular {accountHolder}, telefone {expressPhone}), ou cartões internacionais.
               </p>
             </div>
             <div className="flex items-center gap-4 shrink-0">

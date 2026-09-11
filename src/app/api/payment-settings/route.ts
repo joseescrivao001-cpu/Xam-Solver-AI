@@ -22,7 +22,7 @@ export async function GET() {
     const bankName = dbSettings?.bank_name || "BFA / BAI";
     const accountHolder = dbSettings?.account_holder || "José Escrivão Silvestre";
     const expressPhone = dbSettings?.express_phone || "+244 930 339 436";
-    const iban = dbSettings?.iban || "AO06.0040.0000.0000.0000.0000.0";
+    const iban = dbSettings?.iban || "";
     const notes = dbSettings?.notes || "Envie o comprovativo após a transferência para aprovação imediata.";
     const fallbackRate = Number(dbSettings?.usd_to_aoa_rate) || 950;
 
@@ -74,7 +74,7 @@ export async function GET() {
       bank_name: "BFA / BAI",
       account_holder: "José Escrivão Silvestre",
       express_phone: "+244 930 339 436",
-      iban: "AO06.0040.0000.0000.0000.0000.0",
+      iban: "",
       usd_to_aoa_rate: 950,
       plans: {
         ultra: { usd: 19, aoa: 19000, formatted_aoa: "19.000 Kz" },
