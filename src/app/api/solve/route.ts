@@ -100,7 +100,7 @@ export async function POST(req: Request) {
         controller.enqueue(new TextEncoder().encode(" "));
 
         try {
-          const geminiModels = ['gemini-1.5-flash', 'gemini-1.5-pro'];
+          const geminiModels = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           let result: any = null;
           let finalResponseText = "";

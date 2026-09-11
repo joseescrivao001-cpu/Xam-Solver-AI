@@ -214,7 +214,32 @@ export async function GET() {
   let geminiStatus = "NOT_TESTED";
   let geminiError: string | null = null;
   if (process.env.GOOGLE_GEMINI_API_KEY) {
-    const candidateModels = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"];
+    let candidateModels = [
+      "gemini-3.6-flash",
+      "gemini-2.5-flash",
+      "gemini-1.5-flash",
+      "gemini-1.5-pro",
+    ];
+
+    try {
+      const listRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1/models?key=${process.env.GOOGLE_GEMINI_API_KEY}`
+      );
+      if (listRes.ok) {
+        const listData = await listRes.json();
+        const available = (listData.models || [])
+          .filter((m: { supportedGenerationMethods?: string[] }) =>
+            m.supportedGenerationMethods?.includes("generateContent")
+          )
+          .map((m: { name: string }) => m.name.replace("models/", ""));
+        if (available.length > 0) {
+          candidateModels = Array.from(new Set([...available, ...candidateModels]));
+        }
+      }
+    } catch {
+      // Falha ao listar modelos, prossegue com a lista padrão
+    }
+
     const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY);
     
     for (const modelName of candidateModels) {
