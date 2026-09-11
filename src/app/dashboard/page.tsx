@@ -18,6 +18,7 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { useTheme } from "next-themes";
 import useDrivePicker from 'react-google-drive-picker';
 
@@ -424,7 +425,7 @@ export default function ExamSolverGrand() {
     : conversations;
 
   return (
-    <div className="flex h-[100dvh] w-full bg-[#f9f9fa] dark:bg-[#131314] text-[#1f1f1f] dark:text-[#e3e3e3] font-sans overflow-hidden transition-colors duration-500">
+    <div className="flex h-[100dvh] w-full bg-zinc-50 dark:bg-zinc-950 text-[#1f1f1f] dark:text-[#e3e3e3] font-sans overflow-hidden transition-colors duration-500">
       
       {/* ---------------- SIDEBAR ---------------- */}
       <AnimatePresence>
@@ -433,7 +434,7 @@ export default function ExamSolverGrand() {
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: 280, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
-            className="flex-shrink-0 h-full bg-[#f0f0f0] dark:bg-[#1e1e20] flex flex-col z-40 relative shadow-[1px_0_10px_rgba(0,0,0,0.02)] dark:shadow-[1px_0_10px_rgba(0,0,0,0.2)] absolute md:relative w-[280px]"
+            className="flex-shrink-0 h-full bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border-r border-zinc-200 dark:border-zinc-800/60 flex flex-col z-40 relative shadow-[1px_0_10px_rgba(0,0,0,0.02)] dark:shadow-[1px_0_10px_rgba(0,0,0,0.2)] absolute md:relative w-[280px]"
           >
             {/* Header */}
             <div className="flex items-center justify-between p-4 mb-2">
@@ -554,8 +555,8 @@ export default function ExamSolverGrand() {
         
         {/* Animated Background Gradients */}
         <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden opacity-40 dark:opacity-20">
-          <div className="absolute top-[-10%] left-[20%] w-[50%] h-[50%] rounded-full bg-blue-400/20 dark:bg-blue-600/20 blur-[120px] animate-pulse" style={{ animationDuration: '15s' }} />
-          <div className="absolute bottom-[10%] right-[-5%] w-[40%] h-[40%] rounded-full bg-purple-400/20 dark:bg-purple-600/20 blur-[100px] animate-pulse" style={{ animationDuration: '12s', animationDelay: '2s' }} />
+          <div className="absolute top-[-10%] left-[20%] w-[50%] h-[50%] rounded-full bg-indigo-400/20 dark:bg-indigo-600/20 blur-[120px] animate-pulse" style={{ animationDuration: '15s' }} />
+          <div className="absolute bottom-[10%] right-[-5%] w-[40%] h-[40%] rounded-full bg-violet-400/20 dark:bg-violet-600/30 blur-[100px] animate-pulse" style={{ animationDuration: '12s', animationDelay: '2s' }} />
         </div>
 
         {/* Top Navbar */}
@@ -596,7 +597,7 @@ export default function ExamSolverGrand() {
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {galleryImages.map(img => (
                     <div key={img.id} onClick={() => loadConversation(img.conversation_id)} className="relative aspect-square rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800 group cursor-pointer shadow-sm hover:shadow-md transition">
-                      <img src={img.url} alt="Galeria" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                      <Image src={img.url} alt="Galeria" fill unoptimized className="object-cover transition-transform duration-500 group-hover:scale-110" />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-3">
                         <span className="text-white text-xs font-medium bg-black/50 px-2 py-1 rounded-md backdrop-blur-sm truncate w-full">
                           Ir para o chat
@@ -696,10 +697,10 @@ export default function ExamSolverGrand() {
                           <BrainCircuit className="w-4 h-4 text-white" />
                         </div>
                       )}
-                      <div className={`max-w-[85%] md:max-w-[75%] ${msg.role === 'user' ? 'bg-[#f4f4f4] dark:bg-[#2f2f32] text-zinc-900 dark:text-zinc-100 px-5 py-3.5 rounded-3xl rounded-tr-sm shadow-[0_2px_10px_rgba(0,0,0,0.02)]' : 'text-zinc-800 dark:text-zinc-200 px-2 py-1'}`}>
+                      <div className={`max-w-[85%] md:max-w-[75%] ${msg.role === 'user' ? 'bg-white/50 dark:bg-zinc-900/50 backdrop-blur-md border border-zinc-200/50 dark:border-zinc-800/50 text-zinc-900 dark:text-zinc-100 px-5 py-3.5 rounded-2xl rounded-tr-sm shadow-sm' : 'text-zinc-800 dark:text-zinc-200 px-2 py-1'}`}>
                         {msg.image_url && (
                           <div className="mb-3">
-                            <img src={msg.image_url} alt="Uploaded" className="max-w-sm w-full rounded-2xl shadow-sm border border-zinc-200 dark:border-zinc-700" />
+                            <Image src={msg.image_url!} alt="Uploaded" width={400} height={400} unoptimized className="max-w-sm w-full h-auto rounded-2xl shadow-sm border border-zinc-200 dark:border-zinc-700" />
                           </div>
                         )}
                         {msg.content === "" && isStreaming && idx === messages.length - 1 ? (
@@ -709,7 +710,7 @@ export default function ExamSolverGrand() {
                             <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '0.4s' }} />
                           </div>
                         ) : (
-                          <div className={`prose dark:prose-invert prose-sm max-w-none ${msg.role === 'ai' ? 'leading-relaxed' : ''}`}>
+                          <div className={`prose dark:prose-invert prose-sm max-w-none font-serif ${msg.role === 'ai' ? 'leading-relaxed' : ''}`}>
                             <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.content}</ReactMarkdown>
                           </div>
                         )}
@@ -726,14 +727,14 @@ export default function ExamSolverGrand() {
               <div className="max-w-3xl w-full pointer-events-auto">
                 
                 {/* Input Container */}
-                <div className="relative bg-white dark:bg-[#1e1e20] border border-zinc-200/80 dark:border-zinc-700/80 rounded-[32px] shadow-[0_8px_40px_-12px_rgba(0,0,0,0.1)] dark:shadow-[0_8px_40px_-12px_rgba(0,0,0,0.4)] transition-all focus-within:shadow-[0_8px_40px_-12px_rgba(79,70,229,0.15)] flex flex-col">
+                <div className="relative bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl shadow-[0_8px_40px_-12px_rgba(0,0,0,0.1)] dark:shadow-[0_8px_40px_-12px_rgba(0,0,0,0.4)] transition-all focus-within:shadow-[0_8px_40px_-12px_rgba(79,70,229,0.15)] flex flex-col">
                   
                   {/* Image Preview Area */}
                   <AnimatePresence>
                     {imageBase64 && (
                       <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="px-6 pt-4 pb-1">
                         <div className="relative inline-block group">
-                          <img src={imageBase64} alt="Preview" className="h-16 w-16 object-cover rounded-xl border border-zinc-200 dark:border-zinc-700 shadow-sm" />
+                          <Image src={imageBase64!} alt="Preview" width={64} height={64} unoptimized className="h-16 w-16 object-cover rounded-xl border border-zinc-200 dark:border-zinc-700 shadow-sm" />
                           <button onClick={() => {setImageFile(null); setImageBase64(null);}} className="absolute -top-2 -right-2 bg-zinc-800 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
                             <X className="w-3 h-3" />
                           </button>

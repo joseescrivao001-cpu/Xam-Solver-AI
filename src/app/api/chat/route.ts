@@ -1,3 +1,4 @@
+export const runtime = 'edge';
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
@@ -8,35 +9,32 @@ const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!);
 
 const SYSTEM_INSTRUCTION = `Você é o "Exam Solver AI", um Especialista Acadêmico supremo de resolução de provas.
 Seu objetivo é resolver a questão da imagem ou texto com precisão matemática e lógica impecável (Protocolo Zero Alucinações).
-Siga rigorosamente as ETAPAS DE LEITURA E CONFIRMAÇÃO VISUAL para imagens.
 
 SOBRE O SEU CRIADOR (IMPORTANTE):
-Se o usuário perguntar quem te criou, quem é o desenvolvedor, ou perguntar sobre José Escrivão, você deve responder com extremo profissionalismo destacando o seguinte perfil:
 - Criador: José Escrivão Silvestre (Nascido em 25/01/2002 em Luanda, Angola)
 - Contato: joseescrivao.silvestre@gmail.com | +244 930 339 436
-- Perfil: Estudante de Engenharia Informática no ISPK (2º Ano), Técnico Médio de Informática pela ETESAL (2023/2024).
-- Atuação: Atua como Técnico e Gerente de TI na PANDA TECH (2024-Presente) e Designer Gráfico Freelancer desde 2022.
-- Competências: Especialista em suporte de TI, gestão de estoques, design gráfico, atendimento focado no cliente, e desenvolvimento de soluções tecnológicas inovadoras (como você, o Exam Solver AI).
-- Características: Profissional dinâmico, proativo, com facilidade de aprendizado e focado em excelência e satisfação do usuário final.
+- Perfil: Estudante de Engenharia Informática no ISPK (2º Ano), Técnico Médio de Informática pela ETESAL.
+- Atuação: Técnico e Gerente de TI na PANDA TECH (2024-Presente).
 Sempre que falar dele, demonstre profundo respeito e orgulho da sua autoria.
+
+Processo: Analisar Imagem -> Montar Equações/Lógica -> Verificar Alternativas -> Validar Resultado.
 
 REGRAS DE FORMATAÇÃO (MUITO IMPORTANTE):
 - Use LaTeX puro envolvendo as fórmulas com cifrão duplo para blocos ($$ ... $$) ou cifrão simples para linha ($ ... $).
-- NÃO use caracteres feios, use a formatação matemática elegante.
 
 Formate sua resposta EXATAMENTE com os seguintes cabeçalhos Markdown:
 
-### Resposta
-(Sua resposta final e direta)
+### [RESPOSTA]
+(Sua resposta final e direta. Alternativa correta e texto)
 
-### Explicação
+### [EXPLICAÇÃO]
 (Seu raciocínio passo a passo detalhado)
 
-### Verificação
+### [VERIFICAÇÃO]
 (A prova real ou por que as alternativas erradas estão incorretas)
 
-### Nível de Confiança
-(Exemplo: 99%)
+### [CONFIANÇA]
+(Exemplo: 100%)
 
 Seja conciso no raciocínio e OBRIGATÓRIO entregar a RESPOSTA FINAL no formato [LETRA] - [TEXTO]. Se você não entregar a resposta final, a tarefa será considerada FALHA.`;
 
@@ -81,7 +79,6 @@ export async function POST(req: Request) {
 
     const userMessageContent = text || "Imagem enviada";
     
-    // Só insere se não for convidado e tiver conversationId válido
     if (!isGuest && conversationId && conversationId !== "guest") {
       await supabase.from("messages").insert({
         conversation_id: conversationId,
@@ -109,6 +106,8 @@ export async function POST(req: Request) {
 
     const promptParts: Part[] = [];
     if (text) promptParts.push({ text: `Pergunta atual do usuário: ${text}` });
+    
+    let groqImageUrl = null;
 
     if (file) {
       const validMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
@@ -123,6 +122,7 @@ export async function POST(req: Request) {
           mimeType: file.type,
         },
       });
+      groqImageUrl = `data:${file.type};base64,${base64Data}`;
     }
 
     const stream = new ReadableStream({
@@ -131,18 +131,20 @@ export async function POST(req: Request) {
         controller.enqueue(new TextEncoder().encode(" "));
 
         try {
-          const modelsToTry = ['gemini-3.6-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
+          const geminiModels = ['gemini-1.5-pro-latest', 'gemini-1.5-flash'];
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          let result: any;
+          let result: any = null;
+          let finalResponseText = "";
+          let usedGroq = false;
           
-          for (const modelName of modelsToTry) {
+          for (const modelName of geminiModels) {
             try {
               const model = genAI.getGenerativeModel(
                 {
                   model: modelName,
                   systemInstruction: SYSTEM_INSTRUCTION,
                 },
-                { apiVersion: 'v1beta' }
+                { apiVersion: 'v1' } // Exigência explícita
               );
 
               if (chatHistory.length > 0) {
@@ -161,34 +163,103 @@ export async function POST(req: Request) {
             } catch (err: unknown) {
               const errMsg = err instanceof Error ? err.message : String(err);
               if (errMsg.includes('429') || errMsg.includes('Too Many Requests') || errMsg.includes('quota') || errMsg.includes('exhausted') || errMsg.includes('503') || errMsg.includes('404')) {
-                console.log(`[Rodízio] ${modelName} falhou com 429/503/404, tentando o próximo...`);
+                console.log(`[Rodízio] ${modelName} falhou, tentando o próximo...`);
                 continue;
               }
               throw err;
             }
           }
 
-          if (!result) {
+          // Groq Fallback se nenhum Gemini funcionar e a chave existir
+          if (!result && process.env.GROQ_API_KEY) {
+             usedGroq = true;
+             console.log("[Rodízio] Tentando Groq Llama 3.1 70B...");
+             
+             // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             const groqMessages: any[] = [
+               { role: "system", content: SYSTEM_INSTRUCTION }
+             ];
+             
+             for (const h of chatHistory) {
+               groqMessages.push({
+                 role: h.role === 'model' ? 'assistant' : 'user',
+                 content: h.parts[0].text
+               });
+             }
+             
+             let groqContent = text || "Responda a questão.";
+             if (groqImageUrl) {
+                groqContent = `[IMAGEM ENVIADA PELO USUÁRIO (NÃO PROCESSADA POR CONTA DO FALLBACK PARA LLAMA 3.1)]: ${text || 'Descreva a resposta assumindo que é uma questão.'}`;
+             }
+
+             groqMessages.push({
+               role: "user",
+               content: groqContent
+             });
+
+             const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+               method: "POST",
+               headers: {
+                 "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
+                 "Content-Type": "application/json"
+               },
+               body: JSON.stringify({
+                 model: "llama-3.1-70b-versatile",
+                 messages: groqMessages,
+                 temperature: 0.1,
+                 max_tokens: 8192,
+                 stream: true
+               })
+             });
+
+             if (!groqRes.ok) {
+                throw new Error("Groq fallback failed: " + await groqRes.text());
+             }
+             
+             const reader = groqRes.body?.getReader();
+             const decoder = new TextDecoder();
+             if (reader) {
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  const chunkStr = decoder.decode(value);
+                  const lines = chunkStr.split('\n');
+                  for (const line of lines) {
+                    if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+                      try {
+                        const data = JSON.parse(line.slice(6));
+                        const content = data.choices[0]?.delta?.content || "";
+                        finalResponseText += content;
+                        controller.enqueue(new TextEncoder().encode(content));
+                      } catch(e) {
+                         // Ignorar parses inválidos
+                         console.error(e);
+                      }
+                    }
+                  }
+                }
+             }
+          } else if (!result && !process.env.GROQ_API_KEY) {
             controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: Nossos servidores de IA estão com alta demanda. Por favor, aguarde alguns segundos e tente novamente.**\n\n*Nenhum crédito foi cobrado.*"));
             controller.close();
             return;
           }
 
-          let finalResponseText = "";
-          for await (const chunk of result.stream) {
-            const chunkText = chunk.text();
-            finalResponseText += chunkText;
-            controller.enqueue(new TextEncoder().encode(chunkText));
+          if (!usedGroq) {
+            for await (const chunk of result.stream) {
+              const chunkText = chunk.text();
+              finalResponseText += chunkText;
+              controller.enqueue(new TextEncoder().encode(chunkText));
+            }
           }
 
-          // Validação apenas na primeira mensagem
-          if (chatHistory.length === 0 && !finalResponseText.includes('Resposta') && !finalResponseText.includes('Resposta:')) {
-            controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: A IA falhou em formatar a Resposta Final. Crédito NÃO deduzido.**"));
+          // Validação rigorosa do marcador [RESPOSTA]
+          if (!finalResponseText.includes('[RESPOSTA]') && !finalResponseText.includes('RESPOSTA')) {
+            controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: A IA falhou em formatar a Resposta Final com a tag [RESPOSTA]. Crédito NÃO deduzido.**"));
             controller.close();
             return;
           }
 
-          // Salvar resposta da IA no banco
           if (!isGuest && conversationId && conversationId !== "guest" && profile) {
             const { error: insertError } = await supabase.from("messages").insert({
               conversation_id: conversationId,
@@ -196,7 +267,6 @@ export async function POST(req: Request) {
               content: finalResponseText
             });
 
-            // Debitar crédito somente se salvou com sucesso
             if (!insertError) {
               await supabase
                 .from("profiles")
