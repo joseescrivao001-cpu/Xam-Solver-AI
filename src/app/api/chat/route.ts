@@ -173,7 +173,7 @@ export async function POST(req: Request) {
           // Groq Fallback se nenhum Gemini funcionar e a chave existir
           if (!result && process.env.GROQ_API_KEY) {
              usedGroq = true;
-             console.log("[Rodízio] Tentando Groq Llama 3.1 70B...");
+             console.log("[Rodízio] Tentando Groq Llama 3.3 70B...");
              
              // eslint-disable-next-line @typescript-eslint/no-explicit-any
              const groqMessages: any[] = [
@@ -189,7 +189,7 @@ export async function POST(req: Request) {
              
              let groqContent = text || "Responda a questão.";
              if (groqImageUrl) {
-                groqContent = `[IMAGEM ENVIADA PELO USUÁRIO (NÃO PROCESSADA POR CONTA DO FALLBACK PARA LLAMA 3.1)]: ${text || 'Descreva a resposta assumindo que é uma questão.'}`;
+                groqContent = `[IMAGEM ENVIADA PELO USUÁRIO (NÃO PROCESSADA POR CONTA DO FALLBACK PARA LLAMA 3.3)]: ${text || 'Descreva a resposta assumindo que é uma questão.'}`;
              }
 
              groqMessages.push({
@@ -204,7 +204,7 @@ export async function POST(req: Request) {
                  "Content-Type": "application/json"
                },
                body: JSON.stringify({
-                 model: "llama-3.1-70b-versatile",
+                 model: "llama-3.3-70b-versatile",
                  messages: groqMessages,
                  temperature: 0.1,
                  max_tokens: 8192,
