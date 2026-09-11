@@ -75,17 +75,19 @@ BEGIN
   IF NEW.is_admin IS DISTINCT FROM OLD.is_admin THEN
     v_current_role := current_setting('role', true);
     
-    -- Permitir caso venha de service_role (chave do backend interna)
-    IF v_current_role = 'service_role' THEN
+    -- Permitir caso venha do SQL Editor (postgres/supabase_admin), sem sessão web (auth.uid() IS NULL) ou backend (service_role)
+    IF v_current_role IN ('service_role', 'postgres', 'supabase_admin') 
+       OR CURRENT_USER IN ('postgres', 'supabase_admin')
+       OR auth.uid() IS NULL THEN
       RETURN NEW;
     END IF;
 
-    -- Verificar se o usuário autenticado que tenta alterar é um admin confirmado
+    -- Se for uma requisição de cliente (usuário comum autenticado tentando alterar seu próprio perfil)
     SELECT is_admin INTO v_is_requester_admin
     FROM public.profiles
     WHERE id = auth.uid();
 
-    -- Se não for service_role e não for admin confirmado, abortar a transação
+    -- Se o usuário requisitante NÃO for um admin confirmado, abortar a transação
     IF v_is_requester_admin IS NOT TRUE THEN
       RAISE EXCEPTION 'Acesso Negado: A coluna is_admin é estritamente protegida contra escalada de privilégios.';
     END IF;
