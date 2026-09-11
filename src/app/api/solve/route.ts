@@ -121,7 +121,7 @@ export async function POST(req: Request) {
 
           if (!result && process.env.GROQ_API_KEY) {
              usedGroq = true;
-             console.log("[Rodízio] Tentando Groq Llama 3.3 70B...");
+             console.warn("[FAILOVER] Tier 1 e 2 do Google falharam. Usando GROQ como Tier Nuclear.");
              
              let groqContent = text || "Responda a questão.";
              if (groqImageUrl) {
@@ -135,7 +135,7 @@ export async function POST(req: Request) {
                  "Content-Type": "application/json"
                },
                body: JSON.stringify({
-                 model: "llama-3.3-70b-versatile",
+                 model: "openai/gpt-oss-120b",
                  messages: [
                    { role: "system", content: SYSTEM_INSTRUCTION },
                    { role: "user", content: groqContent }

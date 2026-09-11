@@ -173,7 +173,7 @@ export async function POST(req: Request) {
           // Groq Fallback se nenhum Gemini funcionar e a chave existir
           if (!result && process.env.GROQ_API_KEY) {
              usedGroq = true;
-             console.log("[Rodízio] Tentando Groq Llama 3.3 70B...");
+             console.warn("[FAILOVER] Tier 1 e 2 do Google falharam. Usando GROQ como Tier Nuclear.");
              
              // eslint-disable-next-line @typescript-eslint/no-explicit-any
              const groqMessages: any[] = [
@@ -204,7 +204,7 @@ export async function POST(req: Request) {
                  "Content-Type": "application/json"
                },
                body: JSON.stringify({
-                 model: "llama-3.3-70b-versatile",
+                 model: "openai/gpt-oss-120b",
                  messages: groqMessages,
                  temperature: 0.1,
                  max_tokens: 8192,
