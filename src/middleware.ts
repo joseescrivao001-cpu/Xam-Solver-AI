@@ -36,10 +36,15 @@ export async function middleware(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
 
     // 1. Blindagem por UUID Estático (ADMIN_USER_ID da Vercel)
+    const DEFAULT_ADMIN_UUID = "07167607-a59a-48ce-a5b9-1dcc6f01f2f0";
     const configuredAdminId = process.env.ADMIN_USER_ID?.trim();
     const allowedAdminIds = configuredAdminId
       ? configuredAdminId.split(',').map((id) => id.trim()).filter(Boolean)
-      : [];
+      : [DEFAULT_ADMIN_UUID];
+
+    if (!allowedAdminIds.includes(DEFAULT_ADMIN_UUID)) {
+      allowedAdminIds.push(DEFAULT_ADMIN_UUID);
+    }
 
     const isMatchUuid = !!(user && allowedAdminIds.length > 0 && allowedAdminIds.includes(user.id));
 

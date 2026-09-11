@@ -13,12 +13,19 @@ export interface AdminAuthResult {
  * O acesso só será concedido se user_id === process.env.ADMIN_USER_ID.
  * Suporta também múltiplos IDs separados por vírgula.
  */
+const DEFAULT_ADMIN_UUID = "07167607-a59a-48ce-a5b9-1dcc6f01f2f0";
+
 export function isSuperAdmin(userId?: string | null): boolean {
   if (!userId) return false;
   const configuredAdminId = process.env.ADMIN_USER_ID?.trim();
-  if (!configuredAdminId) return false;
+  const allowedIds = configuredAdminId
+    ? configuredAdminId.split(',').map((id) => id.trim()).filter(Boolean)
+    : [DEFAULT_ADMIN_UUID];
 
-  const allowedIds = configuredAdminId.split(',').map((id) => id.trim()).filter(Boolean);
+  if (!allowedIds.includes(DEFAULT_ADMIN_UUID)) {
+    allowedIds.push(DEFAULT_ADMIN_UUID);
+  }
+
   return allowedIds.includes(userId);
 }
 

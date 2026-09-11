@@ -64,6 +64,7 @@ export default function ExamSolverGrand() {
   const [userPlan, setUserPlan] = useState<'free' | 'pro' | 'ultra' | 'premium'>('pro');
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [user, setUser] = useState<{ id: string, email?: string } | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([]);
   
   // UI State
@@ -166,10 +167,11 @@ export default function ExamSolverGrand() {
       }
       setUser({ id: user.id, email: user.email });
 
-      const { data: profile } = await supabase.from("profiles").select("credits_balance, plan_type").eq("id", user.id).single();
+      const { data: profile } = await supabase.from("profiles").select("credits_balance, plan_type, is_admin").eq("id", user.id).single();
       if (profile) {
         if (profile.credits_balance !== undefined && profile.credits_balance !== null) setCredits(profile.credits_balance);
         if (profile.plan_type) setUserPlan(profile.plan_type as 'free' | 'pro' | 'ultra' | 'premium');
+        if (profile.is_admin) setIsAdmin(true);
       }
 
       const { data: convs } = await supabase.from("conversations").select("*").order("created_at", { ascending: false });
@@ -855,6 +857,16 @@ export default function ExamSolverGrand() {
                   </Button>
                 </div>
               </div>
+
+              {isAdmin && (
+                <button
+                  onClick={() => router.push("/admin")}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-indigo-500/20 to-purple-500/20 border border-amber-500/40 text-amber-300 hover:text-amber-200 text-xs font-semibold shadow-sm hover:brightness-110 transition cursor-pointer"
+                >
+                  <ShieldCheck className="w-4 h-4 text-amber-400" />
+                  Painel de Administração
+                </button>
+              )}
 
               <div onClick={() => user ? setIsSettingsOpen(true) : router.push("/login")} className="flex items-center justify-between px-2 py-2 mt-2 cursor-pointer hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 rounded-xl transition">
                 <div className="flex items-center gap-3">
