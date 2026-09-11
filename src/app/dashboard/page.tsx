@@ -4,13 +4,14 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import Link from "next/link";
 import { 
   Menu, X, Plus, Image as ImageIcon, 
   BrainCircuit, AlertCircle, Edit2, Trash2, 
   Check, Sun, Moon, User, 
   Book, Sparkles, LogOut, ChevronDown, PenSquare, ArrowUp, Mic, ShieldCheck,
   Paperclip, Cloud, Camera, Search, Settings, Folder, FolderPlus,
-  RefreshCw, Key
+  RefreshCw, Key, Activity
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -892,6 +893,14 @@ export default function ExamSolverGrand() {
                   <Button size="sm" variant="ghost" onClick={() => router.push("/login")}>Entrar</Button>
                 )}
               </div>
+
+              <Link
+                href="/system-check"
+                className="w-full flex items-center justify-center gap-1.5 py-1 text-[11px] text-zinc-500 hover:text-zinc-300 transition"
+              >
+                <Activity className="w-3 h-3 text-indigo-400" />
+                Diagnóstico do Sistema
+              </Link>
             </div>
           </motion.aside>
         </>
