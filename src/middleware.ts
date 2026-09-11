@@ -1,11 +1,11 @@
-﻿import { NextResponse, type NextRequest } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Proteger todas as rotas /admin (exceto health-check se existir)
-  if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/health-check')) {
+  // Proteger rigorosamente todas as rotas administrativas (/admin e sub-rotas)
+  if (pathname.startsWith('/admin')) {
     let response = NextResponse.next({
       request: {
         headers: request.headers,
@@ -35,15 +35,23 @@ export async function middleware(request: NextRequest) {
 
     const { data: { user } } = await supabase.auth.getUser();
 
-    if (!user) {
-      const loginUrl = request.nextUrl.clone();
-      loginUrl.pathname = '/login';
-      loginUrl.searchParams.set('redirect', pathname);
-      loginUrl.searchParams.set('error', 'admin-required');
-      return NextResponse.redirect(loginUrl);
+    // 1. Blindagem por UUID Estático (ADMIN_USER_ID da Vercel)
+    const configuredAdminId = process.env.ADMIN_USER_ID?.trim();
+    const allowedAdminIds = configuredAdminId
+      ? configuredAdminId.split(',').map((id) => id.trim()).filter(Boolean)
+      : [];
+
+    const isMatchUuid = !!(user && allowedAdminIds.length > 0 && allowedAdminIds.includes(user.id));
+
+    // Ocultação de Rota: se NÃO for o Admin secreto, retorna erro 404 (Não Encontrado)
+    // O atacante nem saberá que a rota /admin existe no sistema
+    if (!isMatchUuid) {
+      return NextResponse.rewrite(new URL('/_not-found', request.url), {
+        status: 404,
+      });
     }
 
-    // Validação estrita de Perfil no Servidor
+    // 2. Validação adicional de integridade no banco de dados
     const { data: profile } = await supabase
       .from('profiles')
       .select('is_admin, is_banned')
@@ -51,10 +59,9 @@ export async function middleware(request: NextRequest) {
       .single();
 
     if (!profile?.is_admin || profile?.is_banned) {
-      const dashUrl = request.nextUrl.clone();
-      dashUrl.pathname = '/dashboard';
-      dashUrl.searchParams.set('error', 'unauthorized-admin');
-      return NextResponse.redirect(dashUrl);
+      return NextResponse.rewrite(new URL('/_not-found', request.url), {
+        status: 404,
+      });
     }
 
     return response;

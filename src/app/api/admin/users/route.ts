@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { verifyAdmin, unauthorizedResponse } from "@/lib/admin-auth";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { verifyAdmin, unauthorizedResponse, isSuperAdmin } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,9 @@ export async function GET(request: Request) {
     const plan = searchParams.get("plan") || "all";
     const status = searchParams.get("status") || "all";
 
-    const supabase = createClient();
+    const serviceClient = createServiceClient();
+    const supabase = serviceClient || createClient();
+
     let query = supabase
       .from("profiles")
       .select("*")
@@ -42,7 +44,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ users: users || [] });
   } catch (err) {
     console.error("[ADMIN_USERS_GET_ERROR]", err);
-    return NextResponse.json({ error: "Erro ao listar usuários." }, { status: 500 });
+    return unauthorizedResponse();
   }
 }
 
@@ -60,7 +62,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "user_id e action são obrigatórios." }, { status: 400 });
     }
 
-    const supabase = createClient();
+    // Trava de Segurança: Apenas quem possuir o UUID Estático ADMIN_USER_ID pode alterar is_admin
+    if (action === "toggle_admin" && !isSuperAdmin(auth.userId)) {
+      return unauthorizedResponse("Apenas o Super Administrador pode conceder privilégios.");
+    }
+
+    const serviceClient = createServiceClient();
+    const supabase = serviceClient || createClient();
     const updatePayload: Record<string, unknown> = {};
 
     switch (action) {
@@ -107,6 +115,6 @@ export async function POST(request: Request) {
     });
   } catch (err) {
     console.error("[ADMIN_USERS_POST_ERROR]", err);
-    return NextResponse.json({ error: "Erro ao atualizar usuário." }, { status: 500 });
+    return unauthorizedResponse();
   }
 }

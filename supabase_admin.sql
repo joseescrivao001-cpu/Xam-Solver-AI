@@ -1,5 +1,5 @@
-﻿-- ==========================================================
--- EXAM SOLVER AI - ADMIN COMMAND CENTER (V1.2)
+-- ==========================================================
+-- EXAM SOLVER AI - ADMIN COMMAND CENTER & SECURITY HARDENING (V1.4)
 -- Execute este script no SQL Editor do seu Dashboard Supabase
 -- ==========================================================
 
@@ -34,7 +34,6 @@ CREATE POLICY "Admins podem visualizar logs de erros"
     )
   );
 
--- Permitir inserção de logs pelo sistema
 DROP POLICY IF EXISTS "Sistema pode inserir logs de erros" ON public.api_error_logs;
 CREATE POLICY "Sistema pode inserir logs de erros"
   ON public.api_error_logs FOR INSERT
@@ -64,7 +63,45 @@ CREATE POLICY "Admins podem gerenciar todos os comprovativos"
     )
   );
 
--- 5. Função para tornar um usuário Admin com facilidade
+-- 5. BLINDAGEM DE BANCO: Trava Contra Escalada de Privilégios (Anti-Privilege Escalation)
+-- Impede categoricamente que qualquer requisição vinda com chave pública/anon ou token de usuário comum altere 'is_admin'
+CREATE OR REPLACE FUNCTION public.protect_is_admin_escalation()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_current_role TEXT;
+  v_is_requester_admin BOOLEAN;
+BEGIN
+  -- Se o campo is_admin foi alterado
+  IF NEW.is_admin IS DISTINCT FROM OLD.is_admin THEN
+    v_current_role := current_setting('role', true);
+    
+    -- Permitir caso venha de service_role (chave do backend interna)
+    IF v_current_role = 'service_role' THEN
+      RETURN NEW;
+    END IF;
+
+    -- Verificar se o usuário autenticado que tenta alterar é um admin confirmado
+    SELECT is_admin INTO v_is_requester_admin
+    FROM public.profiles
+    WHERE id = auth.uid();
+
+    -- Se não for service_role e não for admin confirmado, abortar a transação
+    IF v_is_requester_admin IS NOT TRUE THEN
+      RAISE EXCEPTION 'Acesso Negado: A coluna is_admin é estritamente protegida contra escalada de privilégios.';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trg_protect_is_admin_escalation ON public.profiles;
+CREATE TRIGGER trg_protect_is_admin_escalation
+BEFORE UPDATE ON public.profiles
+FOR EACH ROW
+EXECUTE FUNCTION public.protect_is_admin_escalation();
+
+-- 6. Função para tornar um usuário Admin com facilidade
 -- Exemplo: SELECT public.make_user_admin('seu-email@gmail.com');
 CREATE OR REPLACE FUNCTION public.make_user_admin(target_email TEXT)
 RETURNS TEXT AS $$
