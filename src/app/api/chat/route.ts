@@ -2,7 +2,7 @@ export const runtime = 'edge';
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { GoogleGenerativeAI, Part, Content, DynamicRetrievalMode } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!);
@@ -51,13 +51,16 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 export async function POST(req: Request) {
   try {
     const supabase = createClient();
+    const serviceClient = createServiceClient();
+    const db = serviceClient || supabase;
+
     const { data: { user } } = await supabase.auth.getUser();
     
     const isGuest = !user;
     let profile = null;
 
     if (!isGuest) {
-      const { data: p } = await supabase
+      const { data: p } = await db
         .from("profiles")
         .select("credits_balance, plan_type")
         .eq("id", user?.id)
@@ -72,10 +75,27 @@ export async function POST(req: Request) {
     }
 
     const formData = await req.formData();
-    const conversationId = formData.get("conversation_id") as string;
+    let conversationId = formData.get("conversation_id") as string;
     const text = formData.get("text") as string;
     const file = formData.get("file") as File | null;
-    const requestedModel = (formData.get("model") as string) || "gemini-1.5-flash";
+    const requestedModel = (formData.get("model") as string) || "gemini-3.6-flash";
+
+    // Auto-criar conversa se usuário autenticado e sem conversa ativa
+    if (!isGuest && user && (!conversationId || conversationId === "guest")) {
+      const convTitle = text?.trim() ? text.trim().slice(0, 35) + (text.trim().length > 35 ? "..." : "") : "Resolução de Prova";
+      const { data: createdConv } = await db
+        .from("conversations")
+        .insert({
+          user_id: user.id,
+          title: convTitle,
+        })
+        .select()
+        .single();
+
+      if (createdConv) {
+        conversationId = createdConv.id;
+      }
+    }
 
     // Regra de Negócio: Gemini Pro exclusivo para planos Ultra e Premium
     const userPlan = profile?.plan_type || 'pro';
@@ -118,14 +138,15 @@ export async function POST(req: Request) {
     if (text) promptParts.push({ text: `Pergunta atual do usuário: ${text}` });
     
     if (!isGuest && conversationId && conversationId !== "guest") {
-      const { error: insertErr } = await supabase.from("messages").insert({
+      const { error: insertErr } = await db.from("messages").insert({
         conversation_id: conversationId,
         role: 'user',
         content: userMessageContent,
         image_url: imageUrl
       });
       if (insertErr) {
-        await supabase.from("messages").insert({
+        console.warn("[USER_MESSAGE_INSERT_WARN]", insertErr);
+        await db.from("messages").insert({
           conversation_id: conversationId,
           role: 'user',
           content: userMessageContent
@@ -133,7 +154,7 @@ export async function POST(req: Request) {
       }
 
       if (imageUrl && user) {
-        await supabase.from("exams").insert({
+        await db.from("exams").insert({
           user_id: user.id,
           image_url: imageUrl,
           question_text: text || "Resolução de imagem",
@@ -144,7 +165,7 @@ export async function POST(req: Request) {
 
     let chatHistory: Content[] = [];
     if (!isGuest && conversationId && conversationId !== "guest") {
-      const { data: historyData } = await supabase
+      const { data: historyData } = await db
         .from("messages")
         .select("*")
         .eq("conversation_id", conversationId)
@@ -355,14 +376,28 @@ export async function POST(req: Request) {
 
           // Salvar no banco e debitar crédito
           if (!isGuest && conversationId && conversationId !== "guest" && profile) {
-            const { error: insertError } = await supabase.from("messages").insert({
+            const { error: insertError } = await db.from("messages").insert({
               conversation_id: conversationId,
               role: 'ai',
               content: finalResponseText
             });
 
+            if (insertError) {
+              console.error("[AI_MESSAGE_INSERT_ERROR]", insertError);
+            }
+
+            // Atualizar snippet do título da conversa caso seja o primeiro envio
+            if (text && text.trim()) {
+              const titleSnippet = text.trim().slice(0, 35) + (text.trim().length > 35 ? "..." : "");
+              await db
+                .from("conversations")
+                .update({ title: titleSnippet, updated_at: new Date().toISOString() })
+                .eq("id", conversationId)
+                .eq("title", "Novo Atendimento");
+            }
+
             if (!insertError && profile.plan_type !== 'premium') {
-              await supabase
+              await db
                 .from("profiles")
                 .update({ credits_balance: Math.max(0, profile.credits_balance - 1) })
                 .eq("id", user!.id);
@@ -379,11 +414,16 @@ export async function POST(req: Request) {
       }
     });
 
+    const responseHeaders: Record<string, string> = {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Transfer-Encoding': 'chunked',
+    };
+    if (conversationId) {
+      responseHeaders['X-Conversation-Id'] = conversationId;
+    }
+
     return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Transfer-Encoding': 'chunked'
-      }
+      headers: responseHeaders
     });
   } catch (error: unknown) {
     console.error("Chat API Error:", error);

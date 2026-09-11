@@ -62,7 +62,8 @@ export default function ExamSolverGrand() {
   const [currentConvId, setCurrentConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [credits, setCredits] = useState<number>(0);
-  const [userPlan, setUserPlan] = useState<'free' | 'pro' | 'ultra' | 'premium'>('pro');
+  const [userPlan, setUserPlan] = useState<'free' | 'pro' | 'ultra' | 'premium' | null>(null);
+  const [isProfileLoaded, setIsProfileLoaded] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [user, setUser] = useState<{ id: string, email?: string } | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -81,7 +82,7 @@ export default function ExamSolverGrand() {
   const [inputText, setInputText] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
-  const [modelMode, setModelMode] = useState("gemini-1.5-flash");
+  const [modelMode, setModelMode] = useState("gemini-3.6-flash");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -167,6 +168,8 @@ export default function ExamSolverGrand() {
         // GUEST MODE
         const guestCreds = localStorage.getItem("guestCredits");
         setCredits(guestCreds ? parseInt(guestCreds) : 2);
+        setUserPlan("free");
+        setIsProfileLoaded(true);
         loadNotebooksState("guest");
         setIsDataLoading(false);
         return;
@@ -184,6 +187,8 @@ export default function ExamSolverGrand() {
             }
             if (profile.plan_type) {
               setUserPlan(profile.plan_type as 'free' | 'pro' | 'ultra' | 'premium');
+            } else {
+              setUserPlan("free");
             }
             if (profile.is_admin) {
               setIsAdmin(true);
@@ -202,14 +207,36 @@ export default function ExamSolverGrand() {
         }
       } catch (err) {
         console.warn("[INIT_PROFILE_FETCH_WARN]", err);
+      } finally {
+        setIsProfileLoaded(true);
       }
 
-      const { data: convs } = await supabase.from("conversations").select("*").order("created_at", { ascending: false });
-      if (convs) setConversations(convs);
-      
+      // Carregar histórico de conversas do usuário autenticado via API interna segura
+      let loadedConvs: Conversation[] = [];
+      try {
+        const convRes = await fetch("/api/chat/conversations", { cache: "no-store" });
+        if (convRes.ok) {
+          const { conversations: convs } = await convRes.json();
+          if (convs && Array.isArray(convs)) {
+            loadedConvs = convs;
+          }
+        }
+      } catch (err) {
+        console.warn("[INIT_CONVS_FETCH_WARN]", err);
+      }
+
+      // Fallback para o client
+      if (loadedConvs.length === 0) {
+        const { data: convs } = await supabase.from("conversations").select("*").order("created_at", { ascending: false });
+        if (convs) loadedConvs = convs;
+      }
+
+      setConversations(loadedConvs);
       loadNotebooksState(user.id);
 
-      if (convs && convs.length > 0) loadConversation(convs[0].id);
+      if (loadedConvs.length > 0) {
+        loadConversation(loadedConvs[0].id);
+      }
       setIsDataLoading(false);
     };
     initData();
@@ -380,6 +407,18 @@ export default function ExamSolverGrand() {
   const loadConversation = async (id: string) => {
     setCurrentConvId(id);
     setActiveView('chat');
+    try {
+      const res = await fetch(`/api/chat/messages?conversation_id=${id}`, { cache: "no-store" });
+      if (res.ok) {
+        const { messages: msgs } = await res.json();
+        if (msgs && Array.isArray(msgs)) {
+          setMessages(msgs);
+          return;
+        }
+      }
+    } catch {}
+
+    // Fallback direto via Supabase client
     const { data: msgs } = await supabase.from("messages").select("*").eq("conversation_id", id).order("created_at", { ascending: true });
     if (msgs) setMessages(msgs);
   };
@@ -391,12 +430,36 @@ export default function ExamSolverGrand() {
       setMessages([]);
       return;
     }
+
+    try {
+      const res = await fetch("/api/chat/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Novo Atendimento" })
+      });
+      if (res.ok) {
+        const { conversation: data } = await res.json();
+        if (data) {
+          setConversations(prev => [data, ...prev]);
+          setCurrentConvId(data.id);
+          setMessages([]);
+
+          const assignNb = targetNotebookId !== undefined ? targetNotebookId : activeNotebookId;
+          if (assignNb) {
+            moveConversationToNotebook(data.id, assignNb);
+          }
+          return;
+        }
+      }
+    } catch {}
+
+    // Fallback
     const { data } = await supabase.from("conversations").insert({
       user_id: user.id,
       title: "Novo Atendimento"
     }).select().single();
     if (data) {
-      setConversations([data, ...conversations]);
+      setConversations(prev => [data, ...prev]);
       setCurrentConvId(data.id);
       setMessages([]);
 
@@ -410,20 +473,29 @@ export default function ExamSolverGrand() {
 
   const handleRename = async (id: string) => {
     if (!editTitle.trim()) return setEditingConvId(null);
-    const { error } = await supabase.from("conversations").update({ title: editTitle }).eq("id", id);
-    if (!error) setConversations(prev => prev.map(c => c.id === id ? { ...c, title: editTitle } : c));
+    const newTitle = editTitle.trim();
+    try {
+      await fetch("/api/chat/conversations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, title: newTitle })
+      });
+    } catch {}
+    supabase.from("conversations").update({ title: newTitle }).eq("id", id).then();
+    setConversations(prev => prev.map(c => c.id === id ? { ...c, title: newTitle } : c));
     setEditingConvId(null);
   };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const { error } = await supabase.from("conversations").delete().eq("id", id);
-    if (!error) {
-      setConversations(prev => prev.filter(c => c.id !== id));
-      if (currentConvId === id) { 
-        setCurrentConvId(null); 
-        setMessages([]); 
-      }
+    try {
+      await fetch(`/api/chat/conversations?id=${id}`, { method: "DELETE" });
+    } catch {}
+    supabase.from("conversations").delete().eq("id", id).then();
+    setConversations(prev => prev.filter(c => c.id !== id));
+    if (currentConvId === id) { 
+      setCurrentConvId(null); 
+      setMessages([]); 
     }
   };
 
@@ -654,22 +726,42 @@ export default function ExamSolverGrand() {
     if (!user) {
       activeConvId = "guest"; 
     } else if (!activeConvId) {
-      const { data } = await supabase.from("conversations").insert({
-        user_id: user.id,
-        title: inputText.trim() ? inputText.slice(0, 30) + "..." : "Resolução de Imagem"
-      }).select().single();
-      if (data) {
-        activeConvId = data.id;
-        setConversations([data, ...conversations]);
-        setCurrentConvId(activeConvId);
-
-        if (activeNotebookId) {
-          moveConversationToNotebook(data.id, activeNotebookId);
+      const convTitle = inputText.trim() ? inputText.slice(0, 30) + "..." : "Resolução de Imagem";
+      try {
+        const convRes = await fetch("/api/chat/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: convTitle }),
+        });
+        if (convRes.ok) {
+          const { conversation: created } = await convRes.json();
+          if (created) {
+            activeConvId = created.id;
+            setConversations(prev => [created, ...prev]);
+            setCurrentConvId(activeConvId);
+            if (activeNotebookId) {
+              moveConversationToNotebook(created.id, activeNotebookId);
+            }
+          }
         }
-      } else {
-        setError("Erro de rede. Tente novamente.");
-        setIsStreaming(false);
-        return;
+      } catch (err) {
+        console.warn("[CONV_API_CREATE_WARN]", err);
+      }
+
+      if (!activeConvId) {
+        const { data } = await supabase.from("conversations").insert({
+          user_id: user.id,
+          title: convTitle
+        }).select().single();
+        if (data) {
+          activeConvId = data.id;
+          setConversations(prev => [data, ...prev]);
+          setCurrentConvId(activeConvId);
+
+          if (activeNotebookId) {
+            moveConversationToNotebook(data.id, activeNotebookId);
+          }
+        }
       }
     }
 
@@ -722,6 +814,12 @@ export default function ExamSolverGrand() {
         }
         throw new Error(errorText || "Erro no servidor.");
       }
+
+      const returnedConvId = res.headers.get("X-Conversation-Id");
+      if (returnedConvId && returnedConvId !== "guest" && returnedConvId !== activeConvId) {
+        activeConvId = returnedConvId;
+        setCurrentConvId(returnedConvId);
+      }
       
       const reader = res.body?.getReader();
       if (!reader) throw new Error("Erro de stream.");
@@ -738,18 +836,30 @@ export default function ExamSolverGrand() {
         }
       }
       
-      setCredits(prev => {
-        const newVal = Math.max(0, prev - 1);
-        if (!user) localStorage.setItem("guestCredits", newVal.toString());
-        return newVal;
-      });
+      if (userPlan !== 'premium') {
+        setCredits(prev => {
+          const newVal = Math.max(0, prev - 1);
+          if (!user) localStorage.setItem("guestCredits", newVal.toString());
+          return newVal;
+        });
+      }
       
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro inesperado.");
       setMessages(prev => prev.filter(msg => msg.id !== tempAiMsgId));
     } finally {
       setIsStreaming(false);
-      if (activeConvId && activeConvId !== "guest") loadConversation(activeConvId);
+      if (activeConvId && activeConvId !== "guest") {
+        loadConversation(activeConvId);
+        fetch("/api/chat/conversations")
+          .then(r => r.json())
+          .then(d => {
+            if (d?.conversations && Array.isArray(d.conversations)) {
+              setConversations(d.conversations);
+            }
+          })
+          .catch(() => {});
+      }
     }
   };
 
@@ -921,43 +1031,50 @@ export default function ExamSolverGrand() {
 
             {/* Bottom Profile / Settings Trigger */}
             <div className="p-3 border-t border-zinc-200 dark:border-zinc-800/60 space-y-2">
-              <div 
-                onClick={() => setIsPricingOpen(true)} 
-                className={`rounded-2xl p-3.5 text-white shadow-lg relative overflow-hidden group cursor-pointer transition-all hover:scale-[1.01] ${
-                  userPlan === 'premium' 
-                    ? 'bg-gradient-to-r from-amber-600 via-yellow-600 to-amber-700 border border-amber-400/30' 
-                    : userPlan === 'pro'
-                    ? 'bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 border border-indigo-400/30'
-                    : 'bg-zinc-800/80 border border-zinc-700/60'
-                }`}
-              >
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 blur-xl group-hover:scale-150 transition-transform duration-500 pointer-events-none" />
-                <div className="flex items-center justify-between relative z-10 gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-bold flex items-center gap-1 truncate">
-                      {userPlan === 'premium' ? (
-                        <><Crown className="w-3.5 h-3.5 text-amber-200 shrink-0"/> VIP Ilimitado</>
-                      ) : userPlan === 'pro' ? (
-                        <><Sparkles className="w-3.5 h-3.5 text-blue-200 shrink-0"/> Plano Pro</>
-                      ) : (
-                        <><Zap className="w-3.5 h-3.5 text-zinc-300 shrink-0"/> Plano Free</>
-                      )}
-                    </p>
-                    <p className="text-[11px] text-white/80 mt-0.5 truncate">
-                      {userPlan === 'premium' 
-                        ? 'Créditos Ilimitados' 
-                        : `${credits.toLocaleString("pt-AO")} Créditos ${user ? 'ativos' : 'de teste'}`}
-                    </p>
-                  </div>
-                  <Button 
-                    size="sm" 
-                    onClick={(e) => { e.stopPropagation(); setIsPricingOpen(true); }} 
-                    className="bg-white text-zinc-900 hover:bg-zinc-100 h-7 text-xs rounded-lg px-2.5 font-bold shadow-sm shrink-0"
-                  >
-                    {userPlan === 'premium' ? 'Planos' : 'Upgrade'}
-                  </Button>
+              {!isProfileLoaded ? (
+                <div className="rounded-2xl p-3.5 bg-zinc-200/40 dark:bg-zinc-800/40 border border-zinc-300/30 dark:border-zinc-700/30 animate-pulse space-y-2">
+                  <div className="h-3.5 w-24 bg-zinc-300/60 dark:bg-zinc-700/60 rounded" />
+                  <div className="h-3 w-32 bg-zinc-300/40 dark:bg-zinc-700/40 rounded" />
                 </div>
-              </div>
+              ) : (
+                <div 
+                  onClick={() => setIsPricingOpen(true)} 
+                  className={`rounded-2xl p-3.5 text-white shadow-lg relative overflow-hidden group cursor-pointer transition-all hover:scale-[1.01] ${
+                    userPlan === 'premium' 
+                      ? 'bg-gradient-to-r from-amber-600 via-yellow-600 to-amber-700 border border-amber-400/30' 
+                      : userPlan === 'pro'
+                      ? 'bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 border border-indigo-400/30'
+                      : 'bg-zinc-800/80 border border-zinc-700/60'
+                  }`}
+                >
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 blur-xl group-hover:scale-150 transition-transform duration-500 pointer-events-none" />
+                  <div className="flex items-center justify-between relative z-10 gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-bold flex items-center gap-1 truncate">
+                        {userPlan === 'premium' ? (
+                          <><Crown className="w-3.5 h-3.5 text-amber-200 shrink-0"/> VIP Ilimitado</>
+                        ) : userPlan === 'pro' ? (
+                          <><Sparkles className="w-3.5 h-3.5 text-blue-200 shrink-0"/> Plano Pro</>
+                        ) : (
+                          <><Zap className="w-3.5 h-3.5 text-zinc-300 shrink-0"/> Plano Free</>
+                        )}
+                      </p>
+                      <p className="text-[11px] text-white/80 mt-0.5 truncate">
+                        {userPlan === 'premium' 
+                          ? 'Créditos Ilimitados' 
+                          : `${credits.toLocaleString("pt-AO")} Créditos ${user ? 'ativos' : 'de teste'}`}
+                      </p>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      onClick={(e) => { e.stopPropagation(); setIsPricingOpen(true); }} 
+                      className="bg-white text-zinc-900 hover:bg-zinc-100 h-7 text-xs rounded-lg px-2.5 font-bold shadow-sm shrink-0"
+                    >
+                      {userPlan === 'premium' ? 'Planos' : 'Upgrade'}
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {isAdmin && (
                 <button
@@ -1057,21 +1174,30 @@ export default function ExamSolverGrand() {
           )}
 
           <div className="ml-auto flex items-center gap-3">
-            <button onClick={() => setIsPricingOpen(true)} className="text-xs text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition shadow-xs">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>
-                {userPlan === 'premium' ? '✨ Créditos Ilimitados (PREMIUM)' : `${credits.toLocaleString("pt-AO")} Créditos (${userPlan.toUpperCase()})`}
-              </span>
-            </button>
-            {userPlan !== 'premium' ? (
-              <button onClick={() => setIsPricingOpen(true)} className="hidden sm:inline-flex text-xs font-semibold px-3 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-sm transition items-center gap-1.5 cursor-pointer">
-                <Sparkles className="w-3 h-3" />
-                Upgrade
-              </button>
+            {!isProfileLoaded ? (
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-36 rounded-lg bg-zinc-200/50 dark:bg-zinc-800/50 animate-pulse border border-zinc-300/30 dark:border-zinc-700/30" />
+                <div className="hidden sm:inline-block h-8 w-20 rounded-lg bg-zinc-200/50 dark:bg-zinc-800/50 animate-pulse" />
+              </div>
             ) : (
-              <span className="hidden sm:inline-flex text-xs font-bold px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 items-center gap-1">
-                <Crown className="w-3.5 h-3.5" /> VIP Ilimitado
-              </span>
+              <>
+                <button onClick={() => setIsPricingOpen(true)} className="text-xs text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition shadow-xs">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  <span>
+                    {userPlan === 'premium' ? '✨ Créditos Ilimitados (PREMIUM)' : `${credits.toLocaleString("pt-AO")} Créditos (${(userPlan || 'free').toUpperCase()})`}
+                  </span>
+                </button>
+                {userPlan !== 'premium' ? (
+                  <button onClick={() => setIsPricingOpen(true)} className="hidden sm:inline-flex text-xs font-semibold px-3 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-sm transition items-center gap-1.5 cursor-pointer">
+                    <Sparkles className="w-3 h-3" />
+                    Upgrade
+                  </button>
+                ) : (
+                  <span className="hidden sm:inline-flex text-xs font-bold px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 items-center gap-1">
+                    <Crown className="w-3.5 h-3.5" /> VIP Ilimitado
+                  </span>
+                )}
+              </>
             )}
             <span className="text-[13px] font-medium text-zinc-400 flex items-center gap-1">
               <ShieldCheck className="w-4 h-4 text-emerald-500" /> Conexão Blindada
@@ -1476,7 +1602,7 @@ export default function ExamSolverGrand() {
                       </Button>
                     )}
                     <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-500 uppercase tracking-wider">
-                      {userPlan.toUpperCase()}
+                      {(userPlan || 'free').toUpperCase()}
                     </span>
                     <Button 
                       size="sm" 
@@ -1948,7 +2074,7 @@ export default function ExamSolverGrand() {
       <PricingModal 
         isOpen={isPricingOpen} 
         onClose={() => setIsPricingOpen(false)} 
-        currentPlan={userPlan} 
+        currentPlan={userPlan || 'free'} 
         userEmail={user?.email} 
         onPlanUpdated={refreshCredits} 
       />
