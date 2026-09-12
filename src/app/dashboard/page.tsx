@@ -11,7 +11,8 @@ import {
   Check, Sun, Moon, User, 
   Book, Sparkles, LogOut, ChevronDown, PenSquare, ArrowUp, Mic, ShieldCheck,
   Paperclip, Cloud, Camera, Search, Settings, Folder, FolderPlus,
-  RefreshCw, Key, Activity, Upload, Loader2, Crown, Zap
+  RefreshCw, Key, Activity, Upload, Loader2, Crown, Zap,
+  ArrowLeft, FileText, CheckCircle2, Download, Eye
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -31,11 +32,14 @@ type Message = {
   content: string;
   image_url?: string;
   created_at?: string;
+  thought_process?: string;
+  is_thinking?: boolean;
 };
 
 type Conversation = {
   id: string;
   title: string;
+  notebook_id?: string | null;
 };
 
 type GalleryImage = {
@@ -49,7 +53,39 @@ type Notebook = {
   id: string;
   name: string;
   color: string;
+  description?: string;
   created_at?: string;
+};
+
+type Material = {
+  id: string;
+  title: string;
+  file_url: string;
+  file_type?: string;
+  file_size?: number;
+  created_at?: string;
+};
+
+type Note = {
+  id: string;
+  title: string;
+  content: string;
+  updated_at?: string;
+};
+
+type AnalyticsTopic = {
+  topic: string;
+  reason: string;
+  action_plan?: string;
+};
+
+type AnalyticsData = {
+  overall_score?: number;
+  summary?: string;
+  recommendations?: string;
+  mastered_topics?: AnalyticsTopic[];
+  review_topics?: AnalyticsTopic[];
+  critical_topics?: AnalyticsTopic[];
 };
 
 export default function ExamSolverGrand() {
@@ -85,6 +121,7 @@ export default function ExamSolverGrand() {
   const [modelMode, setModelMode] = useState("gemini-3.6-flash");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fallbackWarning, setFallbackWarning] = useState<string | null>(null);
 
   // Adaptive Sidebar & Persistence
   useEffect(() => {
@@ -118,6 +155,23 @@ export default function ExamSolverGrand() {
   const [newNotebookColor, setNewNotebookColor] = useState("indigo");
   const [convNotebookMap, setConvNotebookMap] = useState<Record<string, string>>({});
   const [movingConvId, setMovingConvId] = useState<string | null>(null);
+
+  // Active Notebook Workspace State
+  const [notebookTab, setNotebookTab] = useState<'chat' | 'materials' | 'notes' | 'analytics'>('chat');
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [isLoadingMaterials, setIsLoadingMaterials] = useState(false);
+  const [isUploadingMaterial, setIsUploadingMaterial] = useState(false);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
+  const [activeNoteTitle, setActiveNoteTitle] = useState("");
+  const [activeNoteContent, setActiveNoteContent] = useState("");
+  const [noteSavedStatus, setNoteSavedStatus] = useState<string | null>(null);
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
+  const [isRefreshingAnalytics, setIsRefreshingAnalytics] = useState(false);
+  const [previewMaterialUrl, setPreviewMaterialUrl] = useState<string | null>(null);
+  const noteSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const materialFileInputRef = useRef<HTMLInputElement>(null);
 
   // Settings & Account Modal State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -231,8 +285,15 @@ export default function ExamSolverGrand() {
         if (convs) loadedConvs = convs;
       }
 
+      // Sincronizar mapeamento de conversas para cadernos diretamente do banco
+      const initialMap: Record<string, string> = {};
+      loadedConvs.forEach((c: Conversation) => {
+        if (c.notebook_id) initialMap[c.id] = c.notebook_id;
+      });
+      setConvNotebookMap(prev => ({ ...prev, ...initialMap }));
+
       setConversations(loadedConvs);
-      loadNotebooksState(user.id);
+      fetchNotebooks(user.id);
 
       if (loadedConvs.length > 0) {
         loadConversation(loadedConvs[0].id);
@@ -243,14 +304,30 @@ export default function ExamSolverGrand() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, supabase]);
 
-  // Load Notebooks and Map from LocalStorage
+  // Load Notebooks from API with Fallback
+  const fetchNotebooks = async (userId: string) => {
+    try {
+      const res = await fetch("/api/notebooks", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.notebooks && Array.isArray(data.notebooks) && data.notebooks.length > 0) {
+          setNotebooks(data.notebooks);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("[NOTEBOOKS_FETCH_WARN]", err);
+    }
+    loadNotebooksState(userId);
+  };
+
   const loadNotebooksState = (userId: string) => {
     const key = `user_notebooks_${userId}`;
     const mapKey = `conv_notebook_map_${userId}`;
     
     try {
       const savedMap = localStorage.getItem(mapKey);
-      if (savedMap) setConvNotebookMap(JSON.parse(savedMap));
+      if (savedMap) setConvNotebookMap(prev => ({ ...JSON.parse(savedMap), ...prev }));
     } catch {}
 
     try {
@@ -277,12 +354,34 @@ export default function ExamSolverGrand() {
     } catch {}
   };
 
-  const createNotebook = () => {
+  const createNotebook = async () => {
     if (!newNotebookName.trim()) return;
+    const name = newNotebookName.trim();
+    const color = newNotebookColor || "indigo";
+
+    try {
+      const res = await fetch("/api/notebooks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, color })
+      });
+      if (res.ok) {
+        const { notebook } = await res.json();
+        if (notebook) {
+          setNotebooks(prev => [notebook, ...prev]);
+          setIsNewNotebookModalOpen(false);
+          setNewNotebookName("");
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("[NOTEBOOK_CREATE_WARN]", err);
+    }
+
     const newNb: Notebook = {
       id: "nb-" + Date.now().toString(),
-      name: newNotebookName.trim(),
-      color: newNotebookColor || "indigo",
+      name,
+      color,
       created_at: new Date().toISOString()
     };
     const updated = [newNb, ...notebooks];
@@ -291,14 +390,29 @@ export default function ExamSolverGrand() {
     setNewNotebookName("");
   };
 
-  const deleteNotebook = (id: string, e?: React.MouseEvent) => {
+  const deleteNotebook = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    try {
+      await fetch(`/api/notebooks?id=${id}`, { method: "DELETE" });
+    } catch (err) {
+      console.warn("[NOTEBOOK_DELETE_WARN]", err);
+    }
     const updated = notebooks.filter(nb => nb.id !== id);
     saveNotebooks(updated);
     if (activeNotebookId === id) setActiveNotebookId(null);
   };
 
-  const moveConversationToNotebook = (convId: string, nbId: string | null) => {
+  const moveConversationToNotebook = async (convId: string, nbId: string | null) => {
+    try {
+      await fetch("/api/notebooks/move-conversation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: convId, notebook_id: nbId })
+      });
+    } catch (err) {
+      console.warn("[NOTEBOOK_MOVE_CONV_WARN]", err);
+    }
+
     const mapKey = `conv_notebook_map_${user?.id || "guest"}`;
     const newMap = { ...convNotebookMap };
     if (nbId) {
@@ -312,6 +426,370 @@ export default function ExamSolverGrand() {
     } catch {}
     setMovingConvId(null);
   };
+
+  // Materials CRUD
+  const fetchMaterials = async (nbId: string) => {
+    setIsLoadingMaterials(true);
+    try {
+      const res = await fetch(`/api/notebooks/materials?notebook_id=${nbId}`, { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        setMaterials(data.materials || []);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoadingMaterials(false);
+    }
+  };
+
+  const handleUploadMaterial = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0] || !activeNotebookId) return;
+    const file = e.target.files[0];
+    setIsUploadingMaterial(true);
+    setError(null);
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const base64Url = reader.result as string;
+        const res = await fetch("/api/notebooks/materials", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            notebook_id: activeNotebookId,
+            title: file.name,
+            file_url: base64Url,
+            file_type: file.type || "application/octet-stream",
+            file_size: file.size
+          })
+        });
+
+        if (res.ok) {
+          const { material } = await res.json();
+          if (material) {
+            setMaterials(prev => [material, ...prev]);
+          }
+        } else {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "Erro ao fazer upload do material.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Erro no upload do arquivo.";
+        setError(msg);
+      } finally {
+        setIsUploadingMaterial(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDeleteMaterial = async (materialId: string) => {
+    try {
+      await fetch(`/api/notebooks/materials?id=${materialId}`, { method: "DELETE" });
+      setMaterials(prev => prev.filter(m => m.id !== materialId));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Notes CRUD & Debounced Auto-Save
+  const fetchNotes = async (nbId: string) => {
+    try {
+      const res = await fetch(`/api/notebooks/notes?notebook_id=${nbId}`, { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        const loadedNotes = data.notes || [];
+        setNotes(loadedNotes);
+        if (loadedNotes.length > 0) {
+          setActiveNoteId(loadedNotes[0].id);
+          setActiveNoteTitle(loadedNotes[0].title);
+          setActiveNoteContent(loadedNotes[0].content || "");
+        } else {
+          setActiveNoteId(null);
+          setActiveNoteTitle("");
+          setActiveNoteContent("");
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSelectNote = (note: Note) => {
+    setActiveNoteId(note.id);
+    setActiveNoteTitle(note.title);
+    setActiveNoteContent(note.content || "");
+    setNoteSavedStatus(null);
+  };
+
+  const handleCreateNewNote = async () => {
+    if (!activeNotebookId) return;
+    try {
+      const res = await fetch("/api/notebooks/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          notebook_id: activeNotebookId,
+          title: "Nova Anotação",
+          content: ""
+        })
+      });
+      if (res.ok) {
+        const { note } = await res.json();
+        if (note) {
+          setNotes(prev => [note, ...prev]);
+          setActiveNoteId(note.id);
+          setActiveNoteTitle(note.title);
+          setActiveNoteContent(note.content || "");
+          setNoteSavedStatus("Nova anotação criada");
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSaveCurrentNote = async (titleToSave?: string, contentToSave?: string) => {
+    if (!activeNotebookId || !activeNoteId) return;
+    const saveTitle = titleToSave !== undefined ? titleToSave : activeNoteTitle;
+    const saveContent = contentToSave !== undefined ? contentToSave : activeNoteContent;
+
+    try {
+      const res = await fetch("/api/notebooks/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: activeNoteId,
+          notebook_id: activeNotebookId,
+          title: saveTitle || "Sem título",
+          content: saveContent || ""
+        })
+      });
+      if (res.ok) {
+        setNoteSavedStatus("✓ Salvo na nuvem");
+        setNotes(prev => prev.map(n => n.id === activeNoteId ? { ...n, title: saveTitle, content: saveContent, updated_at: new Date().toISOString() } : n));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleNoteContentChange = (content: string) => {
+    setActiveNoteContent(content);
+    setNoteSavedStatus("Salvando...");
+    if (noteSaveTimeoutRef.current) clearTimeout(noteSaveTimeoutRef.current);
+    noteSaveTimeoutRef.current = setTimeout(() => {
+      handleSaveCurrentNote(activeNoteTitle, content);
+    }, 1200);
+  };
+
+  const handleNoteTitleChange = (title: string) => {
+    setActiveNoteTitle(title);
+    setNoteSavedStatus("Salvando...");
+    if (noteSaveTimeoutRef.current) clearTimeout(noteSaveTimeoutRef.current);
+    noteSaveTimeoutRef.current = setTimeout(() => {
+      handleSaveCurrentNote(title, activeNoteContent);
+    }, 1200);
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    try {
+      await fetch(`/api/notebooks/notes?id=${noteId}`, { method: "DELETE" });
+      const filtered = notes.filter(n => n.id !== noteId);
+      setNotes(filtered);
+      if (activeNoteId === noteId) {
+        if (filtered.length > 0) {
+          handleSelectNote(filtered[0]);
+        } else {
+          setActiveNoteId(null);
+          setActiveNoteTitle("");
+          setActiveNoteContent("");
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Analytics Engine Fetch & Recalculate
+  const fetchAnalytics = async (nbId: string) => {
+    setIsLoadingAnalytics(true);
+    try {
+      const res = await fetch(`/api/notebooks/analytics?notebook_id=${nbId}`, { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        setAnalyticsData(data.analytics || null);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoadingAnalytics(false);
+    }
+  };
+
+  const handleRefreshAnalytics = async () => {
+    if (!activeNotebookId) return;
+    setIsRefreshingAnalytics(true);
+    try {
+      const res = await fetch("/api/notebooks/analytics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notebook_id: activeNotebookId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAnalyticsData(data.analytics);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsRefreshingAnalytics(false);
+    }
+  };
+
+  // Contextual AI Tool Execution (Streaming into Chat)
+  const triggerAiAction = async (action: 'summarize' | 'exercises' | 'quiz' | 'explain_errors') => {
+    if (!activeNotebookId) return;
+    if (credits < 1 && userPlan !== 'premium') {
+      setIsPricingOpen(true);
+      setError("Créditos insuficientes para executar esta ferramenta pedagógica.");
+      return;
+    }
+
+    const actionLabels: Record<string, string> = {
+      summarize: "Resumo Estruturado do Caderno",
+      exercises: "Simulado de Exercícios & Prova",
+      quiz: "Revisão Rápida dos Conceitos",
+      explain_errors: "Auditoria & Explicação de Dificuldades"
+    };
+
+    const actionTitle = actionLabels[action] || "Análise com IA";
+
+    setActiveView('chat');
+    setIsStreaming(true);
+    setError(null);
+
+    let activeConvId = currentConvId;
+
+    if (!activeConvId) {
+      try {
+        const convRes = await fetch("/api/chat/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: actionTitle,
+            notebook_id: activeNotebookId
+          })
+        });
+        if (convRes.ok) {
+          const { conversation: created } = await convRes.json();
+          if (created) {
+            activeConvId = created.id;
+            setConversations(prev => [created, ...prev]);
+            setCurrentConvId(activeConvId);
+            moveConversationToNotebook(created.id, activeNotebookId);
+          }
+        }
+      } catch (err) {
+        console.warn("Erro ao criar conversa para ferramenta de IA:", err);
+      }
+    }
+
+    const userMsg: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: `[Ação do Caderno]: ${actionTitle}`
+    };
+
+    const tempAiMsgId = "temp-" + Date.now().toString();
+    const tempAiMsg: Message = { id: tempAiMsgId, role: 'ai', content: "" };
+
+    setMessages(prev => [...prev, userMsg, tempAiMsg]);
+
+    try {
+      const res = await fetch("/api/notebooks/ai-tool", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          notebook_id: activeNotebookId,
+          action,
+          conversation_id: activeConvId
+        })
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || "Erro ao executar ferramenta pedagógica.");
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("Falha ao abrir stream de resposta.");
+
+      const decoder = new TextDecoder("utf-8");
+      let done = false;
+      let streamedData = "";
+      
+      let isThinking = false;
+      let thoughtBuffer = "";
+      let visibleBuffer = "";
+      let forceAnswer = false;
+
+      const circuitBreaker = setTimeout(() => {
+        forceAnswer = true;
+      }, 20000);
+
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        if (value) {
+          const chunk = decoder.decode(value, { stream: true });
+          streamedData += chunk;
+          
+          if (!forceAnswer) {
+             if (streamedData.includes("<thought_process>") && !streamedData.includes("</thought_process>")) {
+               isThinking = true;
+               const match = streamedData.match(/<thought_process>([\s\S]*)/);
+               if (match) thoughtBuffer = match[1];
+             } else if (streamedData.includes("</thought_process>")) {
+               isThinking = false;
+               clearTimeout(circuitBreaker);
+               const parts = streamedData.split("</thought_process>");
+               if (parts.length > 1) {
+                 visibleBuffer = parts[1].trimStart();
+               }
+             } else if (!streamedData.includes("<thought_process>")) {
+               visibleBuffer = streamedData;
+               clearTimeout(circuitBreaker);
+             }
+          } else {
+             visibleBuffer = streamedData.replace(/<\/?thought_process>/g, "");
+          }
+
+          setMessages(prev => prev.map(m => m.id === tempAiMsgId ? { ...m, content: visibleBuffer, thought_process: thoughtBuffer, is_thinking: isThinking } : m));
+        }
+      }
+      clearTimeout(circuitBreaker);
+
+      refreshCredits();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Falha ao processar solicitação com a IA.";
+      console.error("AI Tool Error:", err);
+      setError(msg);
+      setMessages(prev => prev.filter(m => m.id !== tempAiMsgId));
+    } finally {
+      setIsStreaming(false);
+    }
+  };
+
+  // Sync Active Notebook data
+  useEffect(() => {
+    if (activeNotebookId) {
+      fetchMaterials(activeNotebookId);
+      fetchNotes(activeNotebookId);
+      fetchAnalytics(activeNotebookId);
+    }
+  }, [activeNotebookId]);
 
   // Click Outside Listener
   useEffect(() => {
@@ -431,11 +909,15 @@ export default function ExamSolverGrand() {
       return;
     }
 
+    const assignNb = targetNotebookId !== undefined ? targetNotebookId : activeNotebookId;
     try {
       const res = await fetch("/api/chat/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Novo Atendimento" })
+        body: JSON.stringify({ 
+          title: "Novo Atendimento",
+          notebook_id: assignNb || null
+        })
       });
       if (res.ok) {
         const { conversation: data } = await res.json();
@@ -444,7 +926,6 @@ export default function ExamSolverGrand() {
           setCurrentConvId(data.id);
           setMessages([]);
 
-          const assignNb = targetNotebookId !== undefined ? targetNotebookId : activeNotebookId;
           if (assignNb) {
             moveConversationToNotebook(data.id, assignNb);
           }
@@ -456,7 +937,8 @@ export default function ExamSolverGrand() {
     // Fallback
     const { data } = await supabase.from("conversations").insert({
       user_id: user.id,
-      title: "Novo Atendimento"
+      title: "Novo Atendimento",
+      ...(assignNb ? { notebook_id: assignNb } : {})
     }).select().single();
     if (data) {
       setConversations(prev => [data, ...prev]);
@@ -464,7 +946,6 @@ export default function ExamSolverGrand() {
       setMessages([]);
 
       // Auto-assign to active or target notebook
-      const assignNb = targetNotebookId !== undefined ? targetNotebookId : activeNotebookId;
       if (assignNb) {
         moveConversationToNotebook(data.id, assignNb);
       }
@@ -821,20 +1302,58 @@ export default function ExamSolverGrand() {
         setCurrentConvId(returnedConvId);
       }
       
+      const actualModel = res.headers.get("X-Actual-Model");
+      if (actualModel && (actualModel.includes("Tier 2") || actualModel.includes("Tier 3"))) {
+        setFallbackWarning("⚠️ Atendido por motor secundário");
+        setTimeout(() => setFallbackWarning(null), 4000);
+      }
+      
       const reader = res.body?.getReader();
       if (!reader) throw new Error("Erro de stream.");
       const decoder = new TextDecoder("utf-8");
       let done = false;
       let streamedData = "";
+      
+      let isThinking = false;
+      let thoughtBuffer = "";
+      let visibleBuffer = "";
+      let forceAnswer = false;
+
+      const circuitBreaker = setTimeout(() => {
+        forceAnswer = true;
+      }, 20000);
 
       while (!done) {
         const { value, done: readerDone } = await reader.read();
         done = readerDone;
         if (value) {
-          streamedData += decoder.decode(value, { stream: true });
-          setMessages(prev => prev.map(msg => msg.id === tempAiMsgId ? { ...msg, content: streamedData } : msg));
+          const chunk = decoder.decode(value, { stream: true });
+          streamedData += chunk;
+          
+          if (!forceAnswer) {
+             if (streamedData.includes("<thought_process>") && !streamedData.includes("</thought_process>")) {
+               isThinking = true;
+               const match = streamedData.match(/<thought_process>([\s\S]*)/);
+               if (match) thoughtBuffer = match[1];
+             } else if (streamedData.includes("</thought_process>")) {
+               isThinking = false;
+               clearTimeout(circuitBreaker);
+               const parts = streamedData.split("</thought_process>");
+               if (parts.length > 1) {
+                 visibleBuffer = parts[1].trimStart();
+               }
+             } else if (!streamedData.includes("<thought_process>")) {
+               visibleBuffer = streamedData;
+               clearTimeout(circuitBreaker);
+             }
+          } else {
+             visibleBuffer = streamedData.replace(/<\/?thought_process>/g, "");
+          }
+
+          setMessages(prev => prev.map(msg => msg.id === tempAiMsgId ? { ...msg, content: visibleBuffer, thought_process: thoughtBuffer, is_thinking: isThinking } : msg));
         }
       }
+      clearTimeout(circuitBreaker);
       
       if (userPlan !== 'premium') {
         setCredits(prev => {
@@ -1167,10 +1686,29 @@ export default function ExamSolverGrand() {
             <div className="flex items-center gap-2 ml-3 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full text-xs font-medium text-indigo-600 dark:text-indigo-400">
               <span className={`w-2 h-2 rounded-full ${activeNotebookObj.color === 'emerald' ? 'bg-emerald-500' : activeNotebookObj.color === 'amber' ? 'bg-amber-500' : activeNotebookObj.color === 'rose' ? 'bg-rose-500' : 'bg-indigo-500'}`} />
               <span>Caderno: <strong>{activeNotebookObj.name}</strong></span>
-              <button onClick={() => setActiveNotebookId(null)} className="hover:text-rose-500 ml-1">
+              <button 
+                onClick={() => { setActiveView('notebooks'); }}
+                className="hover:underline font-semibold text-[11px] ml-1 text-indigo-600 dark:text-indigo-300"
+                title="Abrir painel completo do ambiente de estudo"
+              >
+                Abrir Ambiente
+              </button>
+              <button onClick={() => setActiveNotebookId(null)} className="hover:text-rose-500 ml-1" title="Sair do caderno">
                 <X className="w-3 h-3" />
               </button>
             </div>
+          )}
+
+          {/* Mover conversa geral para caderno */}
+          {!activeNotebookObj && activeView === 'chat' && currentConvId && currentConvId !== 'guest' && (
+            <button
+              onClick={() => setMovingConvId(currentConvId)}
+              className="flex items-center gap-1.5 ml-3 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/70 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/60 px-2.5 py-1 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 transition"
+              title="Organizar este chat em um caderno de estudos"
+            >
+              <Folder className="w-3.5 h-3.5 text-indigo-500" />
+              <span className="hidden sm:inline">Mover para Caderno</span>
+            </button>
           )}
 
           <div className="ml-auto flex items-center gap-3">
@@ -1255,74 +1793,585 @@ export default function ExamSolverGrand() {
           </div>
         )}
 
-        {/* 2. VIEW: CADERNOS DE ESTUDO */}
+        {/* 2. VIEW: CADERNOS DE ESTUDO & AMBIENTE ATIVO */}
         {activeView === 'notebooks' && (
-          <div className="flex-1 overflow-y-auto px-6 py-8 relative z-10 scrollbar-hide">
-            <div className="max-w-5xl mx-auto">
-              <div className="flex items-center justify-between mb-2">
-                <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">Cadernos de Estudo</h1>
-                <Button onClick={() => setIsNewNotebookModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl flex items-center gap-2 text-sm shadow-md">
-                  <FolderPlus className="w-4 h-4" /> Criar Novo Caderno
-                </Button>
-              </div>
-              <p className="text-zinc-500 mb-8">Organize suas matérias, provas e resoluções em pastas temáticas inteligentes com isolamento de contexto.</p>
-              
-              <div className="relative mb-8">
-                <Search className="absolute left-4 top-3.5 w-5 h-5 text-zinc-400" />
-                <input 
-                  type="text" 
-                  onChange={(e) => setNotebookFilter(e.target.value)}
-                  placeholder="Pesquisar nos seus cadernos de estudo..." 
-                  className="w-full bg-white/70 dark:bg-zinc-900/70 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 rounded-2xl py-3.5 pl-12 pr-4 text-[15px] shadow-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all dark:text-zinc-100"
-                />
-              </div>
+          <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 relative z-10 scrollbar-hide flex flex-col">
+            <div className="max-w-6xl mx-auto w-full flex-1 flex flex-col">
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {notebooks.map(nb => {
-                  const count = conversations.filter(c => convNotebookMap[c.id] === nb.id).length;
-                  const colorBg = nb.color === 'emerald' ? 'bg-emerald-500/10 text-emerald-500' : nb.color === 'amber' ? 'bg-amber-500/10 text-amber-500' : nb.color === 'rose' ? 'bg-rose-500/10 text-rose-500' : 'bg-indigo-500/10 text-indigo-500';
+              {/* MODO A: VISÃO GERAL DE TODOS OS CADERNOS (Sem caderno selecionado) */}
+              {!activeNotebookId ? (
+                <>
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                        <Book className="w-8 h-8 text-indigo-500" /> Cadernos de Estudo
+                      </h1>
+                      <p className="text-zinc-500 mt-1">Ambientes de estudo ativos com inteligência artificial, notas em nuvem e materiais contextuais.</p>
+                    </div>
+                    <Button onClick={() => setIsNewNotebookModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl flex items-center gap-2 text-sm shadow-md">
+                      <FolderPlus className="w-4 h-4" /> Criar Novo Caderno
+                    </Button>
+                  </div>
+                  
+                  <div className="relative my-6">
+                    <Search className="absolute left-4 top-3.5 w-5 h-5 text-zinc-400" />
+                    <input 
+                      type="text" 
+                      onChange={(e) => setNotebookFilter(e.target.value)}
+                      placeholder="Pesquisar nos seus cadernos de estudo..." 
+                      className="w-full bg-white/70 dark:bg-zinc-900/70 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 rounded-2xl py-3.5 pl-12 pr-4 text-[15px] shadow-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all dark:text-zinc-100"
+                    />
+                  </div>
 
-                  return (
-                    <div 
-                      key={nb.id}
-                      className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl p-6 rounded-3xl border border-zinc-200/80 dark:border-zinc-800/80 shadow-sm flex flex-col justify-between hover:shadow-lg transition group relative"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className={`w-12 h-12 rounded-2xl ${colorBg} flex items-center justify-center shrink-0 shadow-sm`}>
-                            <Folder className="w-6 h-6" />
-                          </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {notebooks.map(nb => {
+                      const count = conversations.filter(c => convNotebookMap[c.id] === nb.id).length;
+                      const colorBg = nb.color === 'emerald' ? 'bg-emerald-500/10 text-emerald-500' : nb.color === 'amber' ? 'bg-amber-500/10 text-amber-500' : nb.color === 'rose' ? 'bg-rose-500/10 text-rose-500' : 'bg-indigo-500/10 text-indigo-500';
+
+                      return (
+                        <div 
+                          key={nb.id}
+                          className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl p-6 rounded-3xl border border-zinc-200/80 dark:border-zinc-800/80 shadow-sm flex flex-col justify-between hover:shadow-lg transition group relative"
+                        >
                           <div>
-                            <h3 className="font-bold text-zinc-900 dark:text-zinc-100 text-lg group-hover:text-indigo-500 transition">{nb.name}</h3>
-                            <p className="text-xs text-zinc-500 mt-1">{count} {count === 1 ? 'conversa associada' : 'conversas associadas'}</p>
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center gap-4">
+                                <div className={`w-12 h-12 rounded-2xl ${colorBg} flex items-center justify-center shrink-0 shadow-sm`}>
+                                  <Folder className="w-6 h-6" />
+                                </div>
+                                <div className="min-w-0">
+                                  <h3 className="font-bold text-zinc-900 dark:text-zinc-100 text-lg group-hover:text-indigo-500 transition truncate">{nb.name}</h3>
+                                  <p className="text-xs text-zinc-500 mt-0.5">{count} {count === 1 ? 'conversa' : 'conversas'}</p>
+                                </div>
+                              </div>
+                              <button onClick={(e) => deleteNotebook(nb.id, e)} className="p-2 text-zinc-400 hover:text-rose-500 transition rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800" title="Excluir caderno">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-4 line-clamp-2">
+                              {nb.description || "Ambiente com contexto isolado para resolução de provas e exercícios."}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2 mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+                            <Button 
+                              onClick={() => { setActiveNotebookId(nb.id); setNotebookTab('chat'); }} 
+                              variant="outline" 
+                              size="sm" 
+                              className="flex-1 rounded-xl text-xs font-semibold hover:border-indigo-500"
+                            >
+                              Entrar no Ambiente
+                            </Button>
+                            <Button 
+                              onClick={() => createNewChat(nb.id)} 
+                              size="sm" 
+                              className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs"
+                            >
+                              <Plus className="w-3.5 h-3.5 mr-1" /> Novo Chat
+                            </Button>
                           </div>
                         </div>
-                        <button onClick={(e) => deleteNotebook(nb.id, e)} className="p-2 text-zinc-400 hover:text-rose-500 transition rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800" title="Excluir caderno">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      <div className="flex items-center gap-2 mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-800">
-                        <Button 
-                          onClick={() => { setActiveNotebookId(nb.id); setActiveView('chat'); }} 
-                          variant="outline" 
-                          size="sm" 
-                          className="flex-1 rounded-xl text-xs"
-                        >
-                          Ver Conversas
-                        </Button>
-                        <Button 
-                          onClick={() => createNewChat(nb.id)} 
-                          size="sm" 
-                          className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs"
-                        >
-                          <Plus className="w-3.5 h-3.5 mr-1" /> Novo Chat Aqui
-                        </Button>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                /* MODO B: AMBIENTE DE ESTUDO ATIVO DO CADERNO */
+                <div className="flex-1 flex flex-col">
+                  {/* Top Header do Caderno Ativo */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-5 border-b border-zinc-200/80 dark:border-zinc-800/80">
+                    <div className="flex items-center gap-3">
+                      <Button 
+                        onClick={() => setActiveNotebookId(null)} 
+                        variant="ghost" 
+                        size="sm" 
+                        className="rounded-xl text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1.5"
+                      >
+                        <ArrowLeft className="w-4 h-4" /> Todos os Cadernos
+                      </Button>
+                      <div className="h-4 w-px bg-zinc-300 dark:bg-zinc-700" />
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-2xl ${activeNotebookObj?.color === 'emerald' ? 'bg-emerald-500/10 text-emerald-500' : activeNotebookObj?.color === 'amber' ? 'bg-amber-500/10 text-amber-500' : activeNotebookObj?.color === 'rose' ? 'bg-rose-500/10 text-rose-500' : 'bg-indigo-500/10 text-indigo-500'} flex items-center justify-center shrink-0`}>
+                          <Book className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h1 className="text-xl md:text-2xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                            {activeNotebookObj?.name}
+                            <span className="text-[11px] font-semibold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                              Ambiente Ativo
+                            </span>
+                          </h1>
+                          <p className="text-xs text-zinc-500 mt-0.5">{activeNotebookObj?.description || "Ambiente de estudo com ferramentas de IA, materiais e bloco de notas."}</p>
+                        </div>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+
+                    {/* Abas do Ambiente */}
+                    <div className="flex items-center gap-1 bg-zinc-200/50 dark:bg-zinc-800/60 p-1 rounded-2xl border border-zinc-200/60 dark:border-zinc-700/50 self-start md:self-auto overflow-x-auto max-w-full">
+                      <button
+                        onClick={() => setNotebookTab('chat')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition shrink-0 ${notebookTab === 'chat' ? 'bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-xs' : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'}`}
+                      >
+                        <BrainCircuit className="w-3.5 h-3.5" /> Conversas & IA
+                      </button>
+                      <button
+                        onClick={() => { setNotebookTab('materials'); if (activeNotebookId) fetchMaterials(activeNotebookId); }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition shrink-0 ${notebookTab === 'materials' ? 'bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-xs' : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'}`}
+                      >
+                        <Paperclip className="w-3.5 h-3.5" /> Materiais ({materials.length})
+                      </button>
+                      <button
+                        onClick={() => { setNotebookTab('notes'); if (activeNotebookId) fetchNotes(activeNotebookId); }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition shrink-0 ${notebookTab === 'notes' ? 'bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-xs' : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'}`}
+                      >
+                        <PenSquare className="w-3.5 h-3.5" /> Bloco de Notas ({notes.length})
+                      </button>
+                      <button
+                        onClick={() => { setNotebookTab('analytics'); if (activeNotebookId) fetchAnalytics(activeNotebookId); }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition shrink-0 ${notebookTab === 'analytics' ? 'bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-xs' : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'}`}
+                      >
+                        <Activity className="w-3.5 h-3.5" /> IA Analytics
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* CONTEÚDO DA ABA SELECIONADA */}
+
+                  {/* 1. ABA: CONVERSAS & FERRAMENTAS DE ESTUDO IA */}
+                  {notebookTab === 'chat' && (
+                    <div className="space-y-6">
+                      {/* 4 Botões de Estudo com IA */}
+                      <div className="bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-blue-500/10 border border-indigo-500/20 rounded-3xl p-5 shadow-xs">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="w-5 h-5 text-indigo-500" />
+                            <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                              Ferramentas de Estudo com IA (Contexto do Caderno)
+                            </h3>
+                          </div>
+                          <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-medium hidden sm:inline">
+                            Alimentado por Gemini 3.6 Flash
+                          </span>
+                        </div>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+                          Essas ferramentas sintetizam todas as mensagens, materiais e anotações deste caderno para responder instantaneamente:
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                          <button
+                            onClick={() => triggerAiAction('summarize')}
+                            className="p-3 rounded-2xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/80 hover:border-indigo-400 hover:shadow-md transition text-left group cursor-pointer"
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <Sparkles className="w-4 h-4 text-amber-500" />
+                              <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 group-hover:text-indigo-500">Resumir Matéria</span>
+                            </div>
+                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 line-clamp-2">Gera um resumo mestre organizado em tópicos e fórmulas.</p>
+                          </button>
+                          <button
+                            onClick={() => triggerAiAction('exercises')}
+                            className="p-3 rounded-2xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/80 hover:border-emerald-400 hover:shadow-md transition text-left group cursor-pointer"
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <PenSquare className="w-4 h-4 text-emerald-500" />
+                              <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 group-hover:text-emerald-500">Criar Exercícios</span>
+                            </div>
+                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 line-clamp-2">Simulado de prova com gabarito comentado passo a passo.</p>
+                          </button>
+                          <button
+                            onClick={() => triggerAiAction('quiz')}
+                            className="p-3 rounded-2xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/80 hover:border-indigo-400 hover:shadow-md transition text-left group cursor-pointer"
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <BrainCircuit className="w-4 h-4 text-indigo-500" />
+                              <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 group-hover:text-indigo-500">Fazer Revisão</span>
+                            </div>
+                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 line-clamp-2">Quiz rápido e interativo com os conceitos mais cobrados.</p>
+                          </button>
+                          <button
+                            onClick={() => triggerAiAction('explain_errors')}
+                            className="p-3 rounded-2xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/80 hover:border-rose-400 hover:shadow-md transition text-left group cursor-pointer"
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <AlertCircle className="w-4 h-4 text-rose-500" />
+                              <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 group-hover:text-rose-500">Explicar Meus Erros</span>
+                            </div>
+                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 line-clamp-2">Apanhado de dificuldades e explicação na raiz do erro.</p>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Lista de Conversas do Caderno */}
+                      <div className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl border border-zinc-200/80 dark:border-zinc-800/80 rounded-3xl p-6 shadow-sm">
+                        <div className="flex items-center justify-between mb-4">
+                          <div>
+                            <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">Conversas Vinculadas ao Caderno</h3>
+                            <p className="text-xs text-zinc-500">Todos os chats iniciados aqui compartilham o contexto deste caderno.</p>
+                          </div>
+                          <Button onClick={() => createNewChat(activeNotebookId)} size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs flex items-center gap-1.5 shadow-sm">
+                            <Plus className="w-3.5 h-3.5" /> Novo Chat no Caderno
+                          </Button>
+                        </div>
+
+                        {(() => {
+                          const notebookConvs = conversations.filter(c => convNotebookMap[c.id] === activeNotebookId);
+                          if (notebookConvs.length === 0) {
+                            return (
+                              <div className="py-12 text-center border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl p-6">
+                                <BrainCircuit className="w-10 h-10 text-zinc-300 dark:text-zinc-700 mx-auto mb-3" />
+                                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Nenhum chat vinculado a este caderno ainda</p>
+                                <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
+                                  Qualquer nova conversa iniciada neste ambiente será automaticamente vinculada e integrada a ele.
+                                </p>
+                                <Button onClick={() => createNewChat(activeNotebookId)} className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs">
+                                  Iniciar Primeiro Chat
+                                </Button>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                              {notebookConvs.map(conv => (
+                                <div key={conv.id} className="py-3 flex items-center justify-between hover:bg-zinc-50/50 dark:hover:bg-zinc-800/40 px-3 rounded-xl transition">
+                                  <div className="min-w-0 flex-1 cursor-pointer" onClick={() => { loadConversation(conv.id); setActiveView('chat'); }}>
+                                    <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate hover:text-indigo-500 transition">{conv.title}</h4>
+                                    <p className="text-[11px] text-zinc-400 mt-0.5">Clique para carregar e continuar resolução</p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button 
+                                      onClick={() => { loadConversation(conv.id); setActiveView('chat'); }}
+                                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 transition"
+                                    >
+                                      Abrir
+                                    </button>
+                                    <button 
+                                      onClick={() => moveConversationToNotebook(conv.id, null)}
+                                      title="Desvincular do caderno (tornar geral)"
+                                      className="p-1.5 text-zinc-400 hover:text-amber-500 rounded-lg transition"
+                                    >
+                                      <Folder className="w-4 h-4" />
+                                    </button>
+                                    <button 
+                                      onClick={(e) => handleDelete(conv.id, e)}
+                                      title="Excluir chat"
+                                      className="p-1.5 text-zinc-400 hover:text-rose-500 rounded-lg transition"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2. ABA: MATERIAIS & DOCUMENTOS */}
+                  {notebookTab === 'materials' && (
+                    <div className="space-y-6">
+                      {/* Upload Card */}
+                      <div className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl border border-zinc-200/80 dark:border-zinc-800/80 rounded-3xl p-6 shadow-sm">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                          <div>
+                            <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                              <Paperclip className="w-5 h-5 text-indigo-500" /> Materiais do Caderno
+                            </h3>
+                            <p className="text-xs text-zinc-500 mt-0.5">
+                              Envie PDFs de apostilas, listas de exercícios, fotos de provas ou resumos para a IA utilizar como contexto permanente.
+                            </p>
+                          </div>
+                          <div>
+                            <input 
+                              ref={materialFileInputRef}
+                              type="file" 
+                              accept=".pdf,image/*,.doc,.docx,.txt" 
+                              onChange={handleUploadMaterial}
+                              className="hidden" 
+                            />
+                            <Button 
+                              onClick={() => materialFileInputRef.current?.click()}
+                              disabled={isUploadingMaterial}
+                              className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs flex items-center gap-2 shadow-sm"
+                            >
+                              {isUploadingMaterial ? (
+                                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Fazendo Upload...</>
+                              ) : (
+                                <><Upload className="w-3.5 h-3.5" /> Adicionar Material</>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Lista de Materiais */}
+                        <div className="mt-6">
+                          {isLoadingMaterials ? (
+                            <div className="py-12 flex justify-center">
+                              <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                            </div>
+                          ) : materials.length === 0 ? (
+                            <div className="py-12 text-center border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl p-6">
+                              <FileText className="w-10 h-10 text-zinc-300 dark:text-zinc-700 mx-auto mb-3" />
+                              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Nenhum material anexado a este caderno</p>
+                              <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
+                                Clique no botão acima para adicionar PDFs ou imagens de exercícios que serão lidos pelo assistente.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {materials.map(mat => {
+                                const isPdf = mat.file_type?.includes("pdf") || mat.title?.toLowerCase().endsWith(".pdf");
+                                const isImg = mat.file_type?.includes("image") || mat.file_url?.startsWith("data:image");
+
+                                return (
+                                  <div key={mat.id} className="bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 p-4 rounded-2xl flex flex-col justify-between hover:shadow-md transition">
+                                    <div className="flex items-start gap-3">
+                                      <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                        {isImg ? <ImageIcon className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <h4 className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate" title={mat.title}>
+                                          {mat.title}
+                                        </h4>
+                                        <p className="text-[11px] text-zinc-400 mt-0.5">
+                                          {isPdf ? "Documento PDF" : isImg ? "Imagem / Prova" : "Arquivo"} {mat.file_size ? `• ${(mat.file_size / 1024).toFixed(0)} KB` : ""}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-zinc-200/40 dark:border-zinc-700/40">
+                                      <button 
+                                        onClick={() => setPreviewMaterialUrl(mat.file_url)}
+                                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-semibold"
+                                      >
+                                        <Eye className="w-3.5 h-3.5" /> Ver Material
+                                      </button>
+                                      <button 
+                                        onClick={() => handleDeleteMaterial(mat.id)}
+                                        className="text-xs text-zinc-400 hover:text-rose-500 transition p-1"
+                                        title="Remover material"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3. ABA: BLOCO DE NOTAS & AUTO-SAVE */}
+                  {notebookTab === 'notes' && (
+                    <div className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl border border-zinc-200/80 dark:border-zinc-800/80 rounded-3xl p-6 shadow-sm flex-1 flex flex-col min-h-[500px]">
+                      <div className="flex items-center justify-between mb-4 pb-3 border-b border-zinc-100 dark:border-zinc-800">
+                        <div>
+                          <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                            <PenSquare className="w-5 h-5 text-indigo-500" /> Bloco de Notas Integrado
+                          </h3>
+                          <p className="text-xs text-zinc-500">Anotações salvas em tempo real no Supabase e acessíveis pela IA de estudo.</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {noteSavedStatus && (
+                            <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> {noteSavedStatus}
+                            </span>
+                          )}
+                          <Button onClick={handleCreateNewNote} size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs flex items-center gap-1.5 shadow-sm">
+                            <Plus className="w-3.5 h-3.5" /> Nova Anotação
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="flex-1 flex flex-col md:flex-row gap-4">
+                        {/* Lista Lateral de Notas */}
+                        <div className="w-full md:w-64 border-r border-zinc-100 dark:border-zinc-800 pr-3 space-y-1.5 overflow-y-auto max-h-[450px]">
+                          {notes.length === 0 ? (
+                            <p className="text-xs text-zinc-400 text-center py-8">Nenhuma nota criada ainda.</p>
+                          ) : (
+                            notes.map(n => (
+                              <div 
+                                key={n.id}
+                                onClick={() => handleSelectNote(n)}
+                                className={`p-2.5 rounded-xl cursor-pointer text-left transition flex items-center justify-between group ${activeNoteId === n.id ? 'bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800/60'}`}
+                              >
+                                <div className="min-w-0 flex-1 pr-2">
+                                  <h4 className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate">{n.title || "Sem título"}</h4>
+                                  <p className="text-[11px] text-zinc-400 truncate mt-0.5">{n.content ? n.content.slice(0, 30) : "Vazio..."}</p>
+                                </div>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteNote(n.id); }}
+                                  className="opacity-0 group-hover:opacity-100 p-1 text-zinc-400 hover:text-rose-500 transition"
+                                  title="Excluir nota"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        {/* Editor da Nota Ativa */}
+                        <div className="flex-1 flex flex-col space-y-3">
+                          {activeNoteId ? (
+                            <>
+                              <input 
+                                type="text"
+                                value={activeNoteTitle}
+                                onChange={(e) => handleNoteTitleChange(e.target.value)}
+                                placeholder="Título da Anotação..."
+                                className="text-lg font-bold bg-transparent outline-none border-b border-zinc-200 dark:border-zinc-800 pb-2 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400"
+                              />
+                              <Textarea 
+                                value={activeNoteContent}
+                                onChange={(e) => handleNoteContentChange(e.target.value)}
+                                placeholder="Escreva suas anotações, fórmulas, dúvidas e lembretes aqui... Salvo automaticamente na nuvem."
+                                className="flex-1 min-h-[350px] bg-zinc-50/50 dark:bg-zinc-800/30 border-0 outline-none resize-none p-4 rounded-2xl text-sm leading-relaxed text-zinc-800 dark:text-zinc-200 focus-visible:ring-1 focus-visible:ring-indigo-500"
+                              />
+                            </>
+                          ) : (
+                            <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+                              <PenSquare className="w-10 h-10 text-zinc-300 dark:text-zinc-700 mb-3" />
+                              <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">Selecione uma nota ou crie uma nova para começar a escrever.</p>
+                              <Button onClick={handleCreateNewNote} className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs">
+                                Criar Nova Anotação
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 4. ABA: IA ANALYTICS & MONITORAMENTO COGNITIVO */}
+                  {notebookTab === 'analytics' && (
+                    <div className="space-y-6">
+                      {isLoadingAnalytics ? (
+                        <div className="py-20 flex flex-col items-center justify-center bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl rounded-3xl border border-zinc-200/80 dark:border-zinc-800/80">
+                          <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-3" />
+                          <p className="text-xs text-zinc-500 font-medium">Carregando diagnóstico analítico da IA...</p>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Diagnostic Score Card */}
+                          <div className="bg-gradient-to-r from-zinc-900 to-indigo-950 text-white p-6 rounded-3xl shadow-xl relative overflow-hidden">
+                            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative z-10">
+                              <div>
+                                <span className="text-xs font-bold uppercase tracking-wider text-indigo-400">Diagnóstico de Domínio Cognitivo com IA</span>
+                                <h2 className="text-2xl font-black mt-1 flex items-center gap-2">
+                                  {analyticsData?.overall_score ?? 60}% de Domínio Estimado
+                                </h2>
+                                <p className="text-xs text-zinc-300 max-w-xl mt-2 leading-relaxed">
+                                  {analyticsData?.summary || "Análise pedagógica contínua das interações, exercícios e notas deste caderno."}
+                                </p>
+                              </div>
+                              <Button 
+                                onClick={handleRefreshAnalytics}
+                                disabled={isRefreshingAnalytics}
+                                className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold px-4 py-2 flex items-center gap-2 shadow-lg shrink-0 cursor-pointer"
+                              >
+                                {isRefreshingAnalytics ? (
+                                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Recalculando com IA...</>
+                                ) : (
+                                  <><RefreshCw className="w-3.5 h-3.5" /> Recalcular Diagnóstico</>
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* 3 Colunas de Diagnóstico: Verde, Amarelo, Vermelho */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                            {/* 🟢 Verde: Assuntos Dominados */}
+                            <div className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl border border-emerald-500/30 rounded-3xl p-5 shadow-sm">
+                              <div className="flex items-center gap-2 mb-3">
+                                <span className="w-3 h-3 rounded-full bg-emerald-500 shadow-sm" />
+                                <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">🟢 Assuntos Dominados</h4>
+                              </div>
+                              <p className="text-xs text-zinc-500 mb-4">Conceitos compreendidos com boa taxa de resolução.</p>
+                              <div className="space-y-2.5">
+                                {analyticsData?.mastered_topics && analyticsData.mastered_topics.length > 0 ? (
+                                  analyticsData.mastered_topics.map((t: AnalyticsTopic, i: number) => (
+                                    <div key={i} className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs">
+                                      <p className="font-semibold text-emerald-700 dark:text-emerald-300">{t.topic}</p>
+                                      <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-1">{t.reason}</p>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-xs text-zinc-400 italic">Nenhum tópico dominado consolidado ainda.</p>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* 🟡 Amarelo: Conceitos em Dúvida / Revisão */}
+                            <div className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl border border-amber-500/30 rounded-3xl p-5 shadow-sm">
+                              <div className="flex items-center gap-2 mb-3">
+                                <span className="w-3 h-3 rounded-full bg-amber-500 shadow-sm" />
+                                <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">🟡 Revisão Necessária</h4>
+                              </div>
+                              <p className="text-xs text-zinc-500 mb-4">Tópicos com hesitação ou precisando de consolidação.</p>
+                              <div className="space-y-2.5">
+                                {analyticsData?.review_topics && analyticsData.review_topics.length > 0 ? (
+                                  analyticsData.review_topics.map((t: AnalyticsTopic, i: number) => (
+                                    <div key={i} className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs">
+                                      <p className="font-semibold text-amber-700 dark:text-amber-300">{t.topic}</p>
+                                      <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-1">{t.reason}</p>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-xs text-zinc-400 italic">Nenhum alerta de revisão pendente.</p>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* 🔴 Vermelho: Dificuldades Críticas & Plano de Ação */}
+                            <div className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl border border-rose-500/30 rounded-3xl p-5 shadow-sm">
+                              <div className="flex items-center gap-2 mb-3">
+                                <span className="w-3 h-3 rounded-full bg-rose-500 shadow-sm" />
+                                <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">🔴 Dificuldades Críticas</h4>
+                              </div>
+                              <p className="text-xs text-zinc-500 mb-4">Erros frequentes com plano exato para passar para Verde.</p>
+                              <div className="space-y-2.5">
+                                {analyticsData?.critical_topics && analyticsData.critical_topics.length > 0 ? (
+                                  analyticsData.critical_topics.map((t: AnalyticsTopic, i: number) => (
+                                    <div key={i} className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs">
+                                      <p className="font-semibold text-rose-700 dark:text-rose-300">{t.topic}</p>
+                                      <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-1">{t.reason}</p>
+                                      {t.action_plan && (
+                                        <div className="mt-2 pt-2 border-t border-rose-500/20">
+                                          <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider block">Como passar para verde:</span>
+                                          <p className="text-[11px] text-zinc-700 dark:text-zinc-300 font-medium mt-0.5">{t.action_plan}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-xs text-zinc-400 italic">Nenhuma dificuldade crítica detectada!</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Recomendações Pedagógicas Finais */}
+                          {analyticsData?.recommendations && (
+                            <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-3xl p-5">
+                              <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-1 flex items-center gap-2">
+                                <Sparkles className="w-4 h-4" /> Plano de Estudo Prioritário Recomendado pela IA
+                              </h4>
+                              <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                                {analyticsData.recommendations}
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                </div>
+              )}
+
             </div>
           </div>
         )}
@@ -1337,7 +2386,56 @@ export default function ExamSolverGrand() {
                     <AlertCircle className="w-4 h-4" /> {error}
                   </motion.div>
                 )}
+                {fallbackWarning && (
+                  <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="absolute top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-amber-500/90 text-white text-sm px-4 py-1.5 rounded-full shadow-md backdrop-blur-md">
+                    <AlertCircle className="w-4 h-4" /> {fallbackWarning}
+                  </motion.div>
+                )}
               </AnimatePresence>
+
+              {/* Se estiver em um caderno ativo, exibir banner das 4 ferramentas IA no topo do chat */}
+              {activeNotebookObj && (
+                <div className="max-w-4xl mx-auto w-full pt-4 pb-2">
+                  <div className="bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-blue-500/10 border border-indigo-500/25 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-2 shadow-xs">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-indigo-500 shrink-0" />
+                      <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200">
+                        Ferramentas IA ({activeNotebookObj.name}):
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        onClick={() => triggerAiAction('summarize')}
+                        disabled={isStreaming}
+                        className="text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Resumir Matéria
+                      </button>
+                      <button
+                        onClick={() => triggerAiAction('exercises')}
+                        disabled={isStreaming}
+                        className="text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                      >
+                        <PenSquare className="w-3.5 h-3.5 text-emerald-500" /> Criar Exercícios
+                      </button>
+                      <button
+                        onClick={() => triggerAiAction('quiz')}
+                        disabled={isStreaming}
+                        className="text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                      >
+                        <BrainCircuit className="w-3.5 h-3.5 text-indigo-500" /> Fazer Revisão
+                      </button>
+                      <button
+                        onClick={() => triggerAiAction('explain_errors')}
+                        disabled={isStreaming}
+                        className="text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                      >
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-500" /> Explicar Meus Erros
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {isDataLoading ? (
                 <div className="max-w-4xl mx-auto w-full space-y-8 pb-40 pt-10">
@@ -1359,10 +2457,13 @@ export default function ExamSolverGrand() {
                       <BrainCircuit className="w-8 h-8 text-white" />
                     </div>
                     <h1 className="text-3xl md:text-4xl font-bold text-zinc-900 dark:text-zinc-100 mb-3">
-                      Como posso te ajudar hoje?
+                      {activeNotebookObj ? `Ambiente: ${activeNotebookObj.name}` : "Como posso te ajudar hoje?"}
                     </h1>
                     <p className="text-zinc-500 text-sm md:text-base max-w-md mx-auto">
-                      Envie uma imagem de prova, questão de concurso ou digite seu exercício para resolução acadêmica com precisão zero-alucinação.
+                      {activeNotebookObj 
+                        ? "Todas as resoluções, imagens e dúvidas enviadas aqui são associadas automaticamente a este caderno."
+                        : "Envie uma imagem de prova, questão de concurso ou digite seu exercício para resolução acadêmica com precisão zero-alucinação."
+                      }
                     </p>
                   </motion.div>
                 </div>
@@ -1381,7 +2482,14 @@ export default function ExamSolverGrand() {
                             <Image src={msg.image_url!} alt="Uploaded" width={400} height={400} unoptimized className="max-w-sm w-full h-auto rounded-2xl shadow-sm border border-zinc-200 dark:border-zinc-700 group-hover:opacity-95 transition" />
                           </div>
                         )}
-                        {msg.content === "" && isStreaming && idx === messages.length - 1 ? (
+                        {msg.is_thinking ? (
+                          <div className="flex items-center gap-3 bg-white/60 dark:bg-zinc-900/60 backdrop-blur-xl border border-zinc-200 dark:border-zinc-800 px-4 py-3 rounded-2xl shadow-sm my-2 max-w-sm">
+                            <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
+                            <span className="text-sm font-medium bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400 bg-clip-text text-transparent">
+                              Analisando problema em profundidade...
+                            </span>
+                          </div>
+                        ) : msg.content === "" && isStreaming && idx === messages.length - 1 ? (
                           <div className="flex items-center gap-2 text-indigo-500 text-sm py-2">
                             <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" />
                             <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '0.2s' }} />
@@ -2063,6 +3171,50 @@ export default function ExamSolverGrand() {
                 <Button onClick={stopCamera} variant="outline" className="rounded-xl text-xs text-zinc-300 border-zinc-700">Cancelar</Button>
                 <Button onClick={takePhoto} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs flex items-center gap-2">
                   <Camera className="w-4 h-4" /> Tirar Foto
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------------- MODAL: PREVIEW DE MATERIAL DO CADERNO ---------------- */}
+      <AnimatePresence>
+        {previewMaterialUrl && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 max-w-3xl w-full shadow-2xl relative flex flex-col"
+            >
+              <button onClick={() => setPreviewMaterialUrl(null)} className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-white rounded-full bg-zinc-800 transition">
+                <X className="w-5 h-5" />
+              </button>
+
+              <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                <Paperclip className="w-5 h-5 text-indigo-400" /> Pré-visualização de Material
+              </h3>
+
+              <div className="relative aspect-video max-h-[60vh] w-full rounded-2xl overflow-hidden bg-black/40 border border-zinc-800 mb-4 flex items-center justify-center">
+                {previewMaterialUrl.startsWith("data:image") || previewMaterialUrl.match(/\.(jpeg|jpg|png|webp|gif)/i) ? (
+                  <Image src={previewMaterialUrl} alt="Material Preview" fill unoptimized className="object-contain" />
+                ) : (
+                  <iframe src={previewMaterialUrl} className="w-full h-full rounded-xl" title="PDF Preview" />
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <Button 
+                  onClick={() => window.open(previewMaterialUrl, "_blank")}
+                  variant="outline" 
+                  className="rounded-xl text-xs text-zinc-300 border-zinc-700 flex items-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" /> Abrir em Nova Aba
+                </Button>
+                <Button 
+                  onClick={() => setPreviewMaterialUrl(null)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs"
+                >
+                  Fechar
                 </Button>
               </div>
             </motion.div>

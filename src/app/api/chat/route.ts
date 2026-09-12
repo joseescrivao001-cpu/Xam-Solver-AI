@@ -3,41 +3,35 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { GoogleGenerativeAI, Part, Content, DynamicRetrievalMode } from "@google/generative-ai";
+import { google } from "@ai-sdk/google";
+import { groq } from "@ai-sdk/groq";
+import { streamText } from "ai";
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!);
+const SYSTEM_INSTRUCTION = `Você é o motor cognitivo de elite do Exam Solver AI. 
+REGRA ABSOLUTA: Antes de gerar UMA ÚNICA PALAVRA visível ao utilizador, você OBRIGATORIAMENTE deve pensar e resolver a questão dentro da tag XML <thought_process>.
 
-const SYSTEM_INSTRUCTION = `Você é o "Exam Solver AI", um Especialista Acadêmico supremo de resolução de provas e tutor de estudos.
-Seu objetivo é resolver questões de provas, vestibulares, concursos e exercícios acadêmicos com precisão matemática impecável (Protocolo Zero Alucinações).
+<thought_process>
+1. INGESTÃO: Transcreva mentalmente fórmulas exatas. Identifique eventuais erros ou armadilhas do professor.
+2. DOMÍNIO LÓGICO: Área de estudo e teoremas necessários.
+3. EXECUÇÃO: Resolva passo a passo de forma invisível.
+4. SELF-CORRECTION: Prove que o seu resultado está correto (ex: aplicando a operação inversa).
+5. ESTRATÉGIA PEDAGÓGICA: Defina como explicar isso de forma simples.
+</thought_process>
+
+REGRAS CRÍTICAS DE SISTEMA:
+1. Fechamento Obrigatório: NUNCA inicie a resposta final sem imprimir a tag \`</thought_process>\`. 
+2. Proteção Anti-Vazamento: Não coloque Markdown de formatação, saudações ou explicações ANTES ou DENTRO da tag \`<thought_process>\`. A tag deve ser a PRIMEIRA coisa gerada.
+3. Tratamento de Anomalias: Se faltarem dados vitais para resolver a questão, NÃO INVENTE. Feche a tag de pensamento, imprima exatamente '### ⚠️ Dados Insuficientes' e explique tecnicamente a falha do enunciado.
+
+FORMATAÇÃO DA RESPOSTA VISÍVEL:
+Após fechar o raciocínio oculto, estruture a resposta didática usando cabeçalhos claros (### 🧩 Desconstrução; ### 🚀 Resolução; ### 🎯 Resposta Final). Use rigor absoluto no LaTeX para equações matematicas ($x$ para inline, $$x$$ para blocos).
 
 SOBRE O SEU CRIADOR (IMPORTANTE):
 - Criador: José Escrivão Silvestre (Nascido em 25/01/2002 em Luanda, Angola)
 - Contato: joseescrivao.silvestre@gmail.com | +244 930 339 436
 - Perfil: Estudante de Engenharia Informática no ISPK (2º Ano), Técnico Médio de Informática pela ETESAL.
 - Atuação: Técnico e Gerente de TI na PANDA TECH (2024-Presente).
-Sempre que falar dele, demonstre profundo respeito e orgulho da sua autoria.
-
-MODO DE OPERAÇÃO:
-1. Para Questões de Provas, Exercícios ou Imagens de Exames:
-- Processo: Analisar Imagem/Texto -> Montar Equações/Lógica -> Verificar Alternativas -> Validar Resultado.
-- Use LaTeX puro envolvendo fórmulas com cifrão duplo para blocos ($$ ... $$) ou cifrão simples para linha ($ ... $).
-- Formate a resposta exatamente com os seguintes tópicos:
-
-### [RESPOSTA]
-(Sua resposta final e direta. No formato [LETRA] - [TEXTO] quando for de múltipla escolha)
-
-### [EXPLICAÇÃO]
-(Seu raciocínio passo a passo detalhado)
-
-### [VERIFICAÇÃO]
-(A prova real ou justificativa de por que as demais alternativas estão incorretas)
-
-### [CONFIANÇA]
-(Exemplo: 100%)
-
-2. Para Saudações ("oi", "olá"), Dúvidas sobre o Sistema ou Conversas Gerais:
-- Responda cordialmente em tom profissional e acolhedor.
-- Apresente-se como o Exam Solver AI e convide o estudante a enviar a foto ou texto da questão que deseja resolver.`;
+Sempre que falar dele, demonstre profundo respeito e orgulho da sua autoria.`;
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -55,7 +49,6 @@ export async function POST(req: Request) {
     const db = serviceClient || supabase;
 
     const { data: { user } } = await supabase.auth.getUser();
-    
     const isGuest = !user;
     let profile = null;
 
@@ -68,7 +61,6 @@ export async function POST(req: Request) {
       profile = p;
       const userPlan = profile?.plan_type || 'free';
 
-      // Plano Premium possui acesso ILIMITADO (sem travas de saldo)
       if (userPlan !== 'premium' && (!profile || profile.credits_balance < 1)) {
         return new Response(JSON.stringify({ error: "Créditos insuficientes. Faça upgrade para continuar." }), { status: 402, headers: { 'Content-Type': 'application/json' } });
       }
@@ -78,9 +70,9 @@ export async function POST(req: Request) {
     let conversationId = formData.get("conversation_id") as string;
     const text = formData.get("text") as string;
     const file = formData.get("file") as File | null;
-    const requestedModel = (formData.get("model") as string) || "gemini-3.6-flash";
+    const requestedModel = (formData.get("model") as string) || "gemini-1.5-flash";
+    const notebookId = (formData.get("notebook_id") as string) || null;
 
-    // Auto-criar conversa se usuário autenticado e sem conversa ativa
     if (!isGuest && user && (!conversationId || conversationId === "guest")) {
       const convTitle = text?.trim() ? text.trim().slice(0, 35) + (text.trim().length > 35 ? "..." : "") : "Resolução de Prova";
       const { data: createdConv } = await db
@@ -88,6 +80,7 @@ export async function POST(req: Request) {
         .insert({
           user_id: user.id,
           title: convTitle,
+          ...(notebookId ? { notebook_id: notebookId } : {}),
         })
         .select()
         .single();
@@ -97,16 +90,9 @@ export async function POST(req: Request) {
       }
     }
 
-    // Regra de Negócio: Gemini Pro exclusivo para planos Ultra e Premium
     const userPlan = profile?.plan_type || 'pro';
     if (requestedModel === 'gemini-1.5-pro' && userPlan !== 'ultra' && userPlan !== 'premium') {
-      return new Response(JSON.stringify({
-        error: "UPGRADE_REQUIRED",
-        message: "O modelo Gemini Pro com raciocínio matemático avançado é exclusivo dos planos Ultra e Premium."
-      }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return new Response(JSON.stringify({ error: "UPGRADE_REQUIRED", message: "O modelo Gemini Pro é exclusivo dos planos Ultra e Premium." }), { status: 403, headers: { 'Content-Type': 'application/json' } });
     }
 
     if (!file && !text) {
@@ -115,8 +101,8 @@ export async function POST(req: Request) {
 
     const userMessageContent = text || "Imagem enviada";
     let imageUrl: string | null = null;
-    let groqImageUrl: string | null = null;
-    const promptParts: Part[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const userPromptParts: any[] = [];
 
     if (file) {
       const validMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
@@ -124,18 +110,19 @@ export async function POST(req: Request) {
         return new Response(JSON.stringify({ error: "Formato inválido. Use JPG, PNG ou WEBP." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
       }
 
-      const base64Data = arrayBufferToBase64(await file.arrayBuffer());
+      const buffer = await file.arrayBuffer();
+      const base64Data = arrayBufferToBase64(buffer);
       imageUrl = `data:${file.type};base64,${base64Data}`;
-      groqImageUrl = imageUrl;
-      promptParts.push({
-        inlineData: {
-          data: base64Data,
-          mimeType: file.type,
-        },
+      
+      userPromptParts.push({
+        type: 'image',
+        image: buffer
       });
     }
 
-    if (text) promptParts.push({ text: `Pergunta atual do usuário: ${text}` });
+    if (text) {
+      userPromptParts.push({ type: 'text', text: `Pergunta: ${text}` });
+    }
     
     if (!isGuest && conversationId && conversationId !== "guest") {
       const { error: insertErr } = await db.from("messages").insert({
@@ -145,7 +132,6 @@ export async function POST(req: Request) {
         image_url: imageUrl
       });
       if (insertErr) {
-        console.warn("[USER_MESSAGE_INSERT_WARN]", insertErr);
         await db.from("messages").insert({
           conversation_id: conversationId,
           role: 'user',
@@ -163,267 +149,153 @@ export async function POST(req: Request) {
       }
     }
 
-    let chatHistory: Content[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const coreMessages: any[] = [];
     if (!isGuest && conversationId && conversationId !== "guest") {
       const { data: historyData } = await db
         .from("messages")
-        .select("*")
+        .select("role, content")
         .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false })
+        .limit(20);
 
-      if (historyData && historyData.length > 1) {
-        // Exclui a mensagem recém-adicionada
+      if (historyData && historyData.length > 0) {
+        // Como buscamos DESC para pegar os últimos 20, invertemos para ficar na ordem cronológica ASC
+        historyData.reverse();
+        
+        // Remove a mensagem atual (que foi a última a ser inserida no topo)
         const previousMsgs = historyData.slice(0, -1);
         
-        // Higienizar histórico: alternar estritamente entre user e model
-        const sanitized: Content[] = [];
         for (const m of previousMsgs) {
-          const role: 'user' | 'model' = m.role === 'ai' ? 'model' : 'user';
           if (!m.content || !m.content.trim()) continue;
-
-          if (sanitized.length > 0 && sanitized[sanitized.length - 1].role === role) {
-            sanitized[sanitized.length - 1].parts[0].text += `\n${m.content}`;
-          } else {
-            sanitized.push({
-              role,
-              parts: [{ text: m.content }]
-            });
-          }
+          
+          // O Vercel AI SDK usa padronizadamente 'user' e 'assistant' (e internamente mapeia para 'model' do Gemini)
+          coreMessages.push({
+            role: m.role === 'ai' ? 'assistant' : 'user',
+            content: m.content
+          });
         }
-
-        // O histórico do Gemini deve começar com 'user' e terminar com 'model'
-        while (sanitized.length > 0 && sanitized[0].role !== 'user') {
-          sanitized.shift();
-        }
-        while (sanitized.length > 0 && sanitized[sanitized.length - 1].role !== 'model') {
-          sanitized.pop();
-        }
-
-        chatHistory = sanitized;
       }
     }
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        // TTFB Hack: envia espaço invisível para resetar o timer da Vercel
-        controller.enqueue(new TextEncoder().encode(" "));
-
-        try {
-          const geminiModels = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          let result: any = null;
-          let finalResponseText = "";
-          let usedGroq = false;
-          
-          for (const modelName of geminiModels) {
-            try {
-              const model = genAI.getGenerativeModel(
-                {
-                  model: modelName,
-                  systemInstruction: SYSTEM_INSTRUCTION,
-                  tools: [
-                    {
-                      googleSearchRetrieval: {
-                        dynamicRetrievalConfig: {
-                          mode: DynamicRetrievalMode.MODE_DYNAMIC,
-                          dynamicThreshold: 0.3,
-                        },
-                      },
-                    },
-                  ],
-                },
-                { apiVersion: 'v1' }
-              );
-
-              if (chatHistory.length > 0) {
-                const chat = model.startChat({
-                  history: chatHistory,
-                  generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
-                });
-                result = await chat.sendMessageStream(promptParts);
-              } else {
-                result = await model.generateContentStream({
-                  contents: [{ role: "user", parts: promptParts }],
-                  generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
-                });
-              }
-              break; // Sucesso com Gemini
-            } catch (err: unknown) {
-              const errMsg = err instanceof Error ? err.message : String(err);
-              console.log(`[Rodízio] ${modelName} com Grounding falhou: ${errMsg}. Tentando fallback sem tools na v1...`);
-              try {
-                const fallbackModel = genAI.getGenerativeModel(
-                  {
-                    model: modelName,
-                    systemInstruction: SYSTEM_INSTRUCTION,
-                  },
-                  { apiVersion: 'v1' }
-                );
-                if (chatHistory.length > 0) {
-                  const chat = fallbackModel.startChat({
-                    history: chatHistory,
-                    generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
-                  });
-                  result = await chat.sendMessageStream(promptParts);
-                } else {
-                  result = await fallbackModel.generateContentStream({
-                    contents: [{ role: "user", parts: promptParts }],
-                    generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
-                  });
-                }
-                break;
-              } catch {
-                continue;
-              }
-            }
-          }
-
-          // Groq Fallback se Gemini não estiver disponível
-          if (!result && process.env.GROQ_API_KEY) {
-             usedGroq = true;
-             console.warn("[FAILOVER] Tier 1 e 2 do Google falharam. Usando GROQ como Tier Nuclear.");
-             
-             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-             const groqMessages: any[] = [
-               { role: "system", content: SYSTEM_INSTRUCTION }
-             ];
-             
-             for (const h of chatHistory) {
-               groqMessages.push({
-                 role: h.role === 'model' ? 'assistant' : 'user',
-                 content: h.parts[0].text
-               });
-             }
-             
-             let groqContent = text || "Responda a questão.";
-             if (groqImageUrl) {
-                groqContent = `[IMAGEM ENVIADA PELO USUÁRIO (NÃO PROCESSADA NO FALLBACK GROQ)]: ${text || 'Por favor, descreva os detalhes da questão para resolução.'}`;
-             }
-
-             groqMessages.push({
-               role: "user",
-               content: groqContent
-             });
-
-             const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-               method: "POST",
-               headers: {
-                 "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-                 "Content-Type": "application/json"
-               },
-               body: JSON.stringify({
-                 model: "openai/gpt-oss-120b",
-                 messages: groqMessages,
-                 temperature: 0.2,
-                 max_tokens: 8192,
-                 stream: true
-               })
-             });
-
-             if (!groqRes.ok) {
-                throw new Error("Groq fallback failed: " + await groqRes.text());
-             }
-             
-             const reader = groqRes.body?.getReader();
-             const decoder = new TextDecoder("utf-8");
-             if (reader) {
-                let sseBuffer = "";
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-                  sseBuffer += decoder.decode(value, { stream: true });
-                  const lines = sseBuffer.split('\n');
-                  // Preservar a última linha incompleta no buffer!
-                  sseBuffer = lines.pop() || "";
-                  
-                  for (const line of lines) {
-                    const trimmed = line.trim();
-                    if (trimmed.startsWith('data: ') && trimmed !== 'data: [DONE]') {
-                      try {
-                        const data = JSON.parse(trimmed.slice(6));
-                        const content = data.choices?.[0]?.delta?.content || "";
-                        if (content) {
-                          finalResponseText += content;
-                          controller.enqueue(new TextEncoder().encode(content));
-                        }
-                      } catch (e) {
-                         console.error("SSE parse error:", e);
-                      }
-                    }
-                  }
-                }
-             }
-          } else if (!result && !process.env.GROQ_API_KEY) {
-            controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: Nossos servidores de IA estão com alta demanda. Por favor, aguarde alguns segundos e tente novamente.**\n\n*Nenhum crédito foi cobrado.*"));
-            controller.close();
-            return;
-          }
-
-          if (!usedGroq && result) {
-            for await (const chunk of result.stream) {
-              const chunkText = chunk.text();
-              finalResponseText += chunkText;
-              controller.enqueue(new TextEncoder().encode(chunkText));
-            }
-          }
-
-          // Validação de entrega útil
-          if (!finalResponseText || finalResponseText.trim().length < 5) {
-            controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: A IA não gerou uma resposta válida. Crédito NÃO deduzido.**"));
-            controller.close();
-            return;
-          }
-
-          // Salvar no banco e debitar crédito
-          if (!isGuest && conversationId && conversationId !== "guest" && profile) {
-            const { error: insertError } = await db.from("messages").insert({
-              conversation_id: conversationId,
-              role: 'ai',
-              content: finalResponseText
-            });
-
-            if (insertError) {
-              console.error("[AI_MESSAGE_INSERT_ERROR]", insertError);
-            }
-
-            // Atualizar snippet do título da conversa caso seja o primeiro envio
-            if (text && text.trim()) {
-              const titleSnippet = text.trim().slice(0, 35) + (text.trim().length > 35 ? "..." : "");
-              await db
-                .from("conversations")
-                .update({ title: titleSnippet, updated_at: new Date().toISOString() })
-                .eq("id", conversationId)
-                .eq("title", "Novo Atendimento");
-            }
-
-            if (!insertError && profile.plan_type !== 'premium') {
-              await db
-                .from("profiles")
-                .update({ credits_balance: Math.max(0, profile.credits_balance - 1) })
-                .eq("id", user!.id);
-            }
-          }
-
-          controller.close();
-        } catch (err) {
-          console.error("Stream generation error:", err);
-          const errorMsg = err instanceof Error ? err.message : String(err);
-          controller.enqueue(new TextEncoder().encode(`\n\n**[FALHA NA INTELIGÊNCIA ARTIFICIAL]:** ${errorMsg}\n\n*Nenhum crédito foi cobrado.*`));
-          controller.close();
-        }
-      }
+    // A mensagem atual é o último elemento do coreMessages
+    coreMessages.push({
+      role: 'user',
+      content: userPromptParts
     });
 
-    const responseHeaders: Record<string, string> = {
-      'Content-Type': 'text/plain; charset=utf-8',
-      'Transfer-Encoding': 'chunked',
-    };
-    if (conversationId) {
-      responseHeaders['X-Conversation-Id'] = conversationId;
+    // Análise de Intenção (Fase 1: Otimização do Motor)
+    const lowerText = text.toLowerCase();
+    const isMathOrPhysics = lowerText.match(/calcule|resolva|equação|integral|derivada|física|matemática|velocidade|aceleração|x|y/);
+    const useTools = !isMathOrPhysics; // Se for puramente matemático, desligamos as ferramentas
+    const temp = isMathOrPhysics ? 0.1 : 0.4; // Menos entropia para raciocínio exato
+
+    // @ai-sdk/google tools
+    const tools = useTools ? {
+      googleSearch: google.tools.googleSearch({
+        dynamicRetrievalConfig: { mode: 'dynamic', dynamicThreshold: 0.3 }
+      })
+    } : undefined;
+
+    const TIERS = [
+      { provider: 'google', id: 'gemini-1.5-pro-latest', label: 'Tier 1' },
+      { provider: 'google', id: 'gemini-1.5-flash', label: 'Tier 2' },
+      { provider: 'groq', id: 'llama-3.3-70b-versatile', label: 'Tier 3 Nuclear' }
+    ];
+
+    const startIndex = requestedModel === 'gemini-1.5-pro' ? 0 : 1;
+    const activeTiers = TIERS.slice(startIndex);
+    
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let streamResult: any = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let usedTier: any = null;
+
+    for (const tier of activeTiers) {
+      // @ts-expect-error globalThis augmentation
+      if (!globalThis.circuitState) {
+        // @ts-expect-error globalThis augmentation
+        globalThis.circuitState = {
+          'gemini-1.5-pro-latest': { fails: 0, lastFail: 0 },
+          'gemini-1.5-flash': { fails: 0, lastFail: 0 },
+          'llama-3.3-70b-versatile': { fails: 0, lastFail: 0 }
+        };
+      }
+      
+      // @ts-expect-error globalThis augmentation
+      const state = globalThis.circuitState[tier.id];
+      if (state.fails >= 3) {
+        if (Date.now() - state.lastFail < 5 * 60 * 1000) {
+          console.warn(`[CIRCUIT BREAKER] Modelo ${tier.id} bloqueado por 5 minutos. Pulando...`);
+          continue;
+        } else {
+          state.fails = 0;
+        }
+      }
+
+      try {
+        const aiModel = tier.provider === 'groq' ? groq(tier.id) : google(tier.id);
+        const toolsToUse = tier.provider === 'groq' ? undefined : tools;
+
+        streamResult = await streamText({
+          model: aiModel,
+          system: SYSTEM_INSTRUCTION,
+          messages: coreMessages,
+          temperature: temp,
+          tools: toolsToUse,
+          async onFinish({ text: finalResponseText }) {
+            if (!isGuest && conversationId && conversationId !== "guest" && profile) {
+              const { error: insertError } = await db.from("messages").insert({
+                conversation_id: conversationId,
+                role: 'ai',
+                content: finalResponseText,
+                model_used: tier.label
+              });
+
+              if (text && text.trim()) {
+                const titleSnippet = text.trim().slice(0, 35) + (text.trim().length > 35 ? "..." : "");
+                await db
+                  .from("conversations")
+                  .update({ title: titleSnippet, updated_at: new Date().toISOString() })
+                  .eq("id", conversationId)
+                  .eq("title", "Novo Atendimento");
+              }
+
+              // Dupla confirmação de safe-charge
+              const hasMinLength = finalResponseText.length > 50;
+              const isNotErrorMsg = !finalResponseText.includes("### ⚠️ Dados Insuficientes");
+              const hasThoughtTag = finalResponseText.includes("</thought_process>");
+
+              if (!insertError && profile.plan_type !== 'premium') {
+                if (hasMinLength && isNotErrorMsg && hasThoughtTag) {
+                  await db
+                    .from("profiles")
+                    .update({ credits_balance: Math.max(0, profile.credits_balance - 1) })
+                    .eq("id", user!.id);
+                }
+              }
+            }
+          }
+        });
+
+        usedTier = tier;
+        break; // Sucesso, sai do loop
+      } catch (err) {
+        console.error(`[FAILOVER] Falha no ${tier.label} (${tier.id}):`, err);
+        state.fails++;
+        state.lastFail = Date.now();
+      }
     }
 
-    return new Response(stream, {
-      headers: responseHeaders
+    if (!streamResult) {
+      return new Response(JSON.stringify({ error: "⚠️ Todos os motores estão ocupados. Tente novamente em instantes." }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    return streamResult.toTextStreamResponse({
+      headers: {
+        'X-Conversation-Id': conversationId || 'guest',
+        'X-Actual-Model': usedTier.label
+      }
     });
   } catch (error: unknown) {
     console.error("Chat API Error:", error);

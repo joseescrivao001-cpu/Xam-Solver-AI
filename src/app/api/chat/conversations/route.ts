@@ -46,6 +46,7 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}));
     const title = (body.title || "Novo Atendimento").slice(0, 100);
+    const notebook_id = body.notebook_id || null;
 
     const serviceClient = createServiceClient();
     const db = serviceClient || supabase;
@@ -55,6 +56,7 @@ export async function POST(req: Request) {
       .insert({
         user_id: user.id,
         title: title.trim() || "Novo Atendimento",
+        ...(notebook_id ? { notebook_id } : {}),
       })
       .select()
       .single();
