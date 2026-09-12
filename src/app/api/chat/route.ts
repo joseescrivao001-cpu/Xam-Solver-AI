@@ -3,9 +3,13 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { google } from "@ai-sdk/google";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { groq } from "@ai-sdk/groq";
 import { streamText } from "ai";
+
+const google = createGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY
+});
 
 const SYSTEM_INSTRUCTION = `Você é o motor cognitivo de elite do Exam Solver AI. 
 REGRA ABSOLUTA: Antes de gerar UMA ÚNICA PALAVRA visível ao utilizador, você OBRIGATORIAMENTE deve pensar e resolver a questão dentro da tag XML <thought_process>.
@@ -200,7 +204,7 @@ export async function POST(req: Request) {
     const TIERS = [
       { provider: 'google', id: 'gemini-1.5-pro-latest', label: 'Tier 1' },
       { provider: 'google', id: 'gemini-1.5-flash', label: 'Tier 2' },
-      { provider: 'groq', id: 'llama-3.3-70b-versatile', label: 'Tier 3 Nuclear' }
+      { provider: 'groq', id: 'llama-3.1-70b-versatile', label: 'Tier 3 Nuclear' }
     ];
 
     const startIndex = requestedModel === 'gemini-1.5-pro' ? 0 : 1;
@@ -218,7 +222,7 @@ export async function POST(req: Request) {
         globalThis.circuitState = {
           'gemini-1.5-pro-latest': { fails: 0, lastFail: 0 },
           'gemini-1.5-flash': { fails: 0, lastFail: 0 },
-          'llama-3.3-70b-versatile': { fails: 0, lastFail: 0 }
+          'llama-3.1-70b-versatile': { fails: 0, lastFail: 0 }
         };
       }
       

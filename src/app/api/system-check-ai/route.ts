@@ -1,8 +1,12 @@
 export const runtime = 'edge';
 
-import { google } from "@ai-sdk/google";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { groq } from "@ai-sdk/groq";
 import { generateText } from "ai";
+
+const google = createGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY
+});
 
 export async function GET() {
   const results: Record<string, { status: string; response?: string; error?: string }> = {};
@@ -10,7 +14,7 @@ export async function GET() {
   const models = [
     { provider: 'google', id: 'gemini-1.5-pro-latest' },
     { provider: 'google', id: 'gemini-1.5-flash' },
-    { provider: 'groq', id: 'llama-3.3-70b-versatile' }
+    { provider: 'groq', id: 'llama-3.1-70b-versatile' }
   ];
 
   for (const model of models) {
