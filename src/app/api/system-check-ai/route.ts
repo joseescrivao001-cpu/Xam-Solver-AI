@@ -5,7 +5,7 @@ import { groq } from "@ai-sdk/groq";
 import { generateText } from "ai";
 
 export async function GET() {
-  const results: Record<string, any> = {};
+  const results: Record<string, { status: string; response?: string; error?: string }> = {};
 
   const models = [
     { provider: 'google', id: 'gemini-1.5-pro-latest' },
@@ -24,8 +24,9 @@ export async function GET() {
       });
 
       results[model.id] = { status: 'success', response: text };
-    } catch (error: any) {
-      results[model.id] = { status: 'error', error: error.message || error.toString() };
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      results[model.id] = { status: 'error', error: errorMsg };
     }
   }
 
