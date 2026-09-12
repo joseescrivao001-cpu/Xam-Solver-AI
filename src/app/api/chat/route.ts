@@ -202,9 +202,9 @@ export async function POST(req: Request) {
     } : undefined;
 
     const TIERS = [
-      { provider: 'google', id: 'gemini-1.5-pro-latest', label: 'Tier 1' },
+      { provider: 'google', id: 'gemini-1.5-pro', label: 'Tier 1' },
       { provider: 'google', id: 'gemini-1.5-flash', label: 'Tier 2' },
-      { provider: 'groq', id: 'llama-3.1-70b-versatile', label: 'Tier 3 Nuclear' }
+      { provider: 'groq', id: 'openai/gpt-oss-120b', label: 'Tier 3 Fallback' }
     ];
 
     const startIndex = requestedModel === 'gemini-1.5-pro' ? 0 : 1;
@@ -220,9 +220,9 @@ export async function POST(req: Request) {
       if (!globalThis.circuitState) {
         // @ts-expect-error globalThis augmentation
         globalThis.circuitState = {
-          'gemini-1.5-pro-latest': { fails: 0, lastFail: 0 },
+          'gemini-1.5-pro': { fails: 0, lastFail: 0 },
           'gemini-1.5-flash': { fails: 0, lastFail: 0 },
-          'llama-3.1-70b-versatile': { fails: 0, lastFail: 0 }
+          'openai/gpt-oss-120b': { fails: 0, lastFail: 0 }
         };
       }
       

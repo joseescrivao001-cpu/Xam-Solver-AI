@@ -12,9 +12,9 @@ export async function GET() {
   const results: Record<string, { status: string; response?: string; error?: string }> = {};
 
   const models = [
-    { provider: 'google', id: 'gemini-1.5-pro-latest' },
+    { provider: 'google', id: 'gemini-1.5-pro' },
     { provider: 'google', id: 'gemini-1.5-flash' },
-    { provider: 'groq', id: 'llama-3.1-70b-versatile' }
+    { provider: 'groq', id: 'openai/gpt-oss-120b' }
   ];
 
   for (const model of models) {
