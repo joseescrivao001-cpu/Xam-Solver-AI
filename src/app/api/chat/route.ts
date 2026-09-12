@@ -205,8 +205,8 @@ export async function POST(req: Request) {
     const groqKey = process.env.GROQ_API_KEY;
 
     const TIERS = [
-      { id: 'gemini-pro', model: google('gemini-2.0-flash'), label: 'Tier 1', provider: 'google' },
-      { id: 'gemini-flash', model: google('gemini-2.0-flash-exp'), label: 'Tier 2', provider: 'google' },
+      { id: 'gemini-pro', model: google('gemini-1.5-pro'), label: 'Tier 1', provider: 'google' },
+      { id: 'gemini-flash', model: google('gemini-1.5-flash'), label: 'Tier 2', provider: 'google' },
       { id: 'groq-gptoss', model: groq('openai/gpt-oss-120b'), label: 'Tier 3 Fallback', provider: 'groq' }
     ];
 
