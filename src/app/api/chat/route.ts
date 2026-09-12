@@ -8,7 +8,8 @@ import { groq } from "@ai-sdk/groq";
 import { streamText } from "ai";
 
 const google = createGoogleGenerativeAI({
-  apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY
+  apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY,
+  baseURL: "https://generativelanguage.googleapis.com/v1"
 });
 
 const SYSTEM_INSTRUCTION = `Você é o motor cognitivo de elite do Exam Solver AI. 
@@ -205,8 +206,8 @@ export async function POST(req: Request) {
     const groqKey = process.env.GROQ_API_KEY;
 
     const TIERS = [
-      { id: 'gemini-pro', model: google('gemini-1.5-pro-latest'), label: 'Tier 1', provider: 'google' },
-      { id: 'gemini-flash', model: google('gemini-1.5-flash-latest'), label: 'Tier 2', provider: 'google' },
+      { id: 'gemini-pro', model: google('gemini-1.5-pro'), label: 'Tier 1', provider: 'google' },
+      { id: 'gemini-flash', model: google('gemini-1.5-flash'), label: 'Tier 2', provider: 'google' },
       { id: 'groq-gptoss', model: groq('openai/gpt-oss-120b'), label: 'Tier 3 Fallback', provider: 'groq' }
     ];
 

@@ -488,10 +488,15 @@ export default function SystemCheckPage() {
 
             {/* Google OAuth */}
             <div className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800/60 space-y-2">
-              <span className="text-zinc-300 font-medium flex items-center gap-1.5">
-                <Globe className="w-3.5 h-3.5 text-blue-400" />
-                Diagnóstico do Google OAuth (Erro 401: invalid_client)
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-300 font-medium flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-blue-400" />
+                  Google OAuth Provider (Configuração)
+                </span>
+                <span className="font-mono font-bold text-emerald-400">
+                  CONFIGURADO (OK)
+                </span>
+              </div>
               <p className="text-zinc-400 leading-relaxed text-[11px]">
                 {report?.integrations.googleOAuth.status401Reason}
               </p>

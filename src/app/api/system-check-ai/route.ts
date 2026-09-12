@@ -5,15 +5,16 @@ import { groq } from "@ai-sdk/groq";
 import { generateText } from "ai";
 
 const google = createGoogleGenerativeAI({
-  apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY
+  apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY,
+  baseURL: "https://generativelanguage.googleapis.com/v1"
 });
 
 export async function GET() {
   const results: Record<string, { status: string; response?: string; error?: string }> = {};
 
   const models = [
-    { provider: 'google', id: 'gemini-1.5-pro-latest' },
-    { provider: 'google', id: 'gemini-1.5-flash-latest' },
+    { provider: 'google', id: 'gemini-1.5-pro' },
+    { provider: 'google', id: 'gemini-1.5-flash' },
     { provider: 'groq', id: 'openai/gpt-oss-120b' }
   ];
 

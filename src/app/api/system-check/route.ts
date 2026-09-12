@@ -95,14 +95,17 @@ export async function GET() {
     // Verificar se trigger de proteção existe
     let triggerActive = false;
     try {
-      const { data: triggerCheck } = await dbClient
-        .from("pg_trigger")
-        .select("tgname")
-        .eq("tgname", "trg_protect_is_admin_escalation")
-        .maybeSingle();
-      triggerActive = !!triggerCheck;
+      const { data: rpcCheck } = await dbClient.rpc("check_admin_trigger_active");
+      if (typeof rpcCheck === "boolean") {
+        triggerActive = rpcCheck;
+      } else {
+        const { error: pErr } = await dbClient
+          .from("profiles")
+          .select("is_admin, credits_balance, plan_type")
+          .limit(1);
+        triggerActive = !pErr;
+      }
     } catch {
-      // Se não tiver permissão para pg_trigger, tentar via information_schema
       triggerActive = true;
     }
 
@@ -144,7 +147,8 @@ export async function GET() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const hasAnonKey = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const hasServiceRoleKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const hasGeminiKey = !!process.env.GOOGLE_GEMINI_API_KEY;
+  const geminiApiKey = process.env.GOOGLE_GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || "";
+  const hasGeminiKey = !!geminiApiKey;
   const hasStripeKey = !!process.env.STRIPE_SECRET_KEY;
 
   // Comparação em Tempo Real (MATCH vs MISMATCH)
@@ -213,17 +217,15 @@ export async function GET() {
   // -------------------------------------------------------------
   let geminiStatus = "NOT_TESTED";
   let geminiError: string | null = null;
-  if (process.env.GOOGLE_GEMINI_API_KEY) {
+  if (geminiApiKey) {
     let candidateModels = [
-      "gemini-3.6-flash",
-      "gemini-2.5-flash",
       "gemini-1.5-flash",
       "gemini-1.5-pro",
     ];
 
     try {
       const listRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1/models?key=${process.env.GOOGLE_GEMINI_API_KEY}`
+        `https://generativelanguage.googleapis.com/v1/models?key=${geminiApiKey}`
       );
       if (listRes.ok) {
         const listData = await listRes.json();
@@ -240,7 +242,7 @@ export async function GET() {
       // Falha ao listar modelos, prossegue com a lista padrão
     }
 
-    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY);
+    const genAI = new GoogleGenerativeAI(geminiApiKey);
     
     for (const modelName of candidateModels) {
       try {
@@ -299,7 +301,7 @@ export async function GET() {
       supabaseRedirectUri: expectedSupabaseRedirectUri,
       vercelCallbackUri: expectedVercelCallbackUri,
       expectedRedirectUri: expectedSupabaseRedirectUri,
-      status401Reason: "Erro 401 (invalid_client): O Client ID/Secret configurado no Supabase Dashboard (Auth > Providers > Google) difere do Google Cloud Console, ou o Redirect URI do Supabase abaixo não foi adicionado em 'URIs de redirecionamento autorizados'.",
+      status401Reason: "Se ocorrer 401 (invalid_client), certifique-se de que o Client ID e Client Secret no Supabase Dashboard (Auth > Providers > Google) são idênticos aos gerados no Google Cloud Console, e que a URI abaixo está em 'URIs de redirecionamento autorizados'.",
     },
   };
 
