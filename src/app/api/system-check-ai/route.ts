@@ -1,8 +1,8 @@
 export const runtime = 'edge';
 
-import { google } from '@ai-sdk/google';
-import { groq } from '@ai-sdk/groq';
-import { generateText } from 'ai';
+import { google } from "@ai-sdk/google";
+import { groq } from "@ai-sdk/groq";
+import { generateText } from "ai";
 
 export async function GET() {
   const results: Record<string, any> = {};
@@ -19,7 +19,7 @@ export async function GET() {
       
       const { text } = await generateText({
         model: aiModel,
-        prompt: 'Responda apenas com a palavra OK.',
+        prompt: "Responda apenas com a palavra OK.",
         maxTokens: 10
       });
 
