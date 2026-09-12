@@ -201,15 +201,20 @@ export async function POST(req: Request) {
       })
     } : undefined;
 
+    const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
+    const groqKey = process.env.GROQ_API_KEY;
+
     const TIERS = [
-      { provider: 'google', id: 'gemini-1.5-pro', label: 'Tier 1' },
-      { provider: 'google', id: 'gemini-1.5-flash', label: 'Tier 2' },
-      { provider: 'groq', id: 'openai/gpt-oss-120b', label: 'Tier 3 Fallback' }
+      { id: 'gemini-pro', model: google('gemini-2.0-flash'), label: 'Tier 1', provider: 'google' },
+      { id: 'gemini-flash', model: google('gemini-2.0-flash-exp'), label: 'Tier 2', provider: 'google' },
+      { id: 'groq-gptoss', model: groq('openai/gpt-oss-120b'), label: 'Tier 3 Fallback', provider: 'groq' }
     ];
 
-    const startIndex = requestedModel === 'gemini-1.5-pro' ? 0 : 1;
-    const activeTiers = TIERS.slice(startIndex);
-    
+    let activeTiers = TIERS;
+    if (!googleKey) {
+      activeTiers = TIERS.filter(t => t.id === 'groq-gptoss');
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let streamResult: any = null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -220,15 +225,15 @@ export async function POST(req: Request) {
       if (!globalThis.circuitState) {
         // @ts-expect-error globalThis augmentation
         globalThis.circuitState = {
-          'gemini-1.5-pro': { fails: 0, lastFail: 0 },
-          'gemini-1.5-flash': { fails: 0, lastFail: 0 },
-          'openai/gpt-oss-120b': { fails: 0, lastFail: 0 }
+          'gemini-pro': { fails: 0, lastFail: 0 },
+          'gemini-flash': { fails: 0, lastFail: 0 },
+          'groq-gptoss': { fails: 0, lastFail: 0 }
         };
       }
       
       // @ts-expect-error globalThis augmentation
       const state = globalThis.circuitState[tier.id];
-      if (state.fails >= 3) {
+      if (state && state.fails >= 3) {
         if (Date.now() - state.lastFail < 5 * 60 * 1000) {
           console.warn(`[CIRCUIT BREAKER] Modelo ${tier.id} bloqueado por 5 minutos. Pulando...`);
           continue;
@@ -238,7 +243,7 @@ export async function POST(req: Request) {
       }
 
       try {
-        const aiModel = tier.provider === 'groq' ? groq(tier.id) : google(tier.id);
+        const aiModel = tier.model;
         const toolsToUse = tier.provider === 'groq' ? undefined : tools;
 
         streamResult = await streamText({
@@ -285,9 +290,11 @@ export async function POST(req: Request) {
         usedTier = tier;
         break; // Sucesso, sai do loop
       } catch (err) {
-        console.error(`[FAILOVER] Falha no ${tier.label} (${tier.id}):`, err);
-        state.fails++;
-        state.lastFail = Date.now();
+        console.error(`[Failover]`, tier.id, err);
+        if (state) {
+          state.fails++;
+          state.lastFail = Date.now();
+        }
       }
     }
 
@@ -298,7 +305,8 @@ export async function POST(req: Request) {
     return streamResult.toTextStreamResponse({
       headers: {
         'X-Conversation-Id': conversationId || 'guest',
-        'X-Actual-Model': usedTier.label
+        'X-Actual-Model': usedTier.label,
+        'X-Model-Used': usedTier.id
       }
     });
   } catch (error: unknown) {
