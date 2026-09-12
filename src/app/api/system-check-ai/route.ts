@@ -19,8 +19,7 @@ export async function GET() {
       
       const { text } = await generateText({
         model: aiModel,
-        prompt: "Responda apenas com a palavra OK.",
-        maxTokens: 10
+        prompt: "Responda apenas com a palavra OK."
       });
 
       results[model.id] = { status: 'success', response: text };
