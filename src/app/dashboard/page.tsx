@@ -2497,7 +2497,20 @@ export default function ExamSolverGrand() {
                           </div>
                         ) : (
                           <div className={`prose dark:prose-invert prose-sm max-w-none font-serif ${msg.role === 'ai' ? 'leading-relaxed' : ''}`}>
-                            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.content}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                              {(() => {
+                                if (!msg.content) return "";
+                                if (msg.content.includes("</thought_process>")) {
+                                  const parts = msg.content.split("</thought_process>");
+                                  const textAfter = parts[1]?.trim();
+                                  return textAfter ? textAfter : msg.content.replace(/<\/?thought_process>/g, "");
+                                }
+                                if (msg.content.includes("<thought_process>")) {
+                                  return msg.content.replace(/<\/?thought_process>/g, "");
+                                }
+                                return msg.content;
+                              })()}
+                            </ReactMarkdown>
                           </div>
                         )}
                       </div>
