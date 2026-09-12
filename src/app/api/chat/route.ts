@@ -214,6 +214,9 @@ export async function POST(req: Request) {
     if (!googleKey) {
       activeTiers = TIERS.filter(t => t.id === 'groq-gptoss');
     }
+    if (!groqKey) {
+      activeTiers = activeTiers.filter(t => t.id !== 'groq-gptoss');
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let streamResult: any = null;
