@@ -4,13 +4,20 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { groq } from "@ai-sdk/groq";
 import { generateText } from "ai";
 
-const google = createGoogleGenerativeAI({
-  apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY,
+const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
+
+const googleV1 = createGoogleGenerativeAI({
+  apiKey: googleKey,
   baseURL: "https://generativelanguage.googleapis.com/v1"
 });
 
+const googleBeta = createGoogleGenerativeAI({
+  apiKey: googleKey,
+  baseURL: "https://generativelanguage.googleapis.com/v1beta"
+});
+
 export async function GET() {
-  const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || "";
+  const apiKey = googleKey || "";
   
   const inspection: Record<string, unknown> = {};
 
@@ -37,14 +44,18 @@ export async function GET() {
   const results: Record<string, { status: string; response?: string; error?: string }> = {};
 
   const models = [
-    { provider: 'google', id: 'gemini-3.1-pro-preview' },
-    { provider: 'google', id: 'gemini-3.8-flash' },
+    { provider: 'google-beta', id: 'gemini-3.1-pro-preview' },
+    { provider: 'google-v1', id: 'gemini-3.8-flash' },
     { provider: 'groq', id: 'openai/gpt-oss-120b' }
   ];
 
   for (const model of models) {
     try {
-      const aiModel = model.provider === 'groq' ? groq(model.id) : google(model.id);
+      const aiModel = model.provider === 'groq' 
+        ? groq(model.id) 
+        : model.provider === 'google-beta'
+        ? googleBeta(model.id)
+        : googleV1(model.id);
       
       const { text } = await generateText({
         model: aiModel,

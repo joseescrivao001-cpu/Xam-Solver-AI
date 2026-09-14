@@ -247,6 +247,7 @@ export async function GET() {
     const genAI = new GoogleGenerativeAI(geminiApiKey);
     
     for (const modelName of candidateModels) {
+      const apiVer = modelName.includes('preview') ? 'v1beta' : 'v1';
       try {
         const model = genAI.getGenerativeModel(
           { 
@@ -262,11 +263,11 @@ export async function GET() {
               },
             ],
           },
-          { apiVersion: 'v1' }
+          { apiVersion: apiVer }
         );
         const result = await model.generateContent("Ping. Responda: OK");
         if (result.response.text()) {
-          geminiStatus = `HEALTHY (${modelName} v1 + Grounding Search)`;
+          geminiStatus = `HEALTHY (${modelName} ${apiVer} + Grounding Search)`;
           geminiError = null;
           break;
         }
@@ -274,11 +275,11 @@ export async function GET() {
         try {
           const modelSimple = genAI.getGenerativeModel(
             { model: modelName },
-            { apiVersion: 'v1' }
+            { apiVersion: apiVer }
           );
           const result = await modelSimple.generateContent("Ping. Responda: OK");
           if (result.response.text()) {
-            geminiStatus = `HEALTHY (${modelName} v1)`;
+            geminiStatus = `HEALTHY (${modelName} ${apiVer})`;
             geminiError = null;
             break;
           }

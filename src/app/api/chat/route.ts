@@ -7,9 +7,16 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { groq } from "@ai-sdk/groq";
 import { streamText } from "ai";
 
-const google = createGoogleGenerativeAI({
-  apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY,
+const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
+
+const googleV1 = createGoogleGenerativeAI({
+  apiKey: googleKey,
   baseURL: "https://generativelanguage.googleapis.com/v1"
+});
+
+const googleBeta = createGoogleGenerativeAI({
+  apiKey: googleKey,
+  baseURL: "https://generativelanguage.googleapis.com/v1beta"
 });
 
 const SYSTEM_INSTRUCTION = `Você é o motor cognitivo de elite do Exam Solver AI. 
@@ -197,17 +204,16 @@ export async function POST(req: Request) {
 
     // @ai-sdk/google tools
     const tools = useTools ? {
-      googleSearch: google.tools.googleSearch({
+      googleSearch: googleBeta.tools.googleSearch({
         dynamicRetrievalConfig: { mode: 'dynamic', dynamicThreshold: 0.3 }
       })
     } : undefined;
 
-    const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
     const groqKey = process.env.GROQ_API_KEY;
 
     const TIERS = [
-      { id: 'gemini-pro', model: google('gemini-3.1-pro-preview'), label: 'Tier 1', provider: 'google' },
-      { id: 'gemini-flash', model: google('gemini-3.8-flash'), label: 'Tier 2', provider: 'google' },
+      { id: 'gemini-pro', model: googleBeta('gemini-3.1-pro-preview'), label: 'Tier 1', provider: 'google' },
+      { id: 'gemini-flash', model: googleV1('gemini-3.8-flash'), label: 'Tier 2', provider: 'google' },
       { id: 'groq-gptoss', model: groq('openai/gpt-oss-120b'), label: 'Tier 3 Fallback', provider: 'groq' }
     ];
 
