@@ -37,7 +37,7 @@ export async function GET() {
   const results: Record<string, { status: string; response?: string; error?: string }> = {};
 
   const models = [
-    { provider: 'google', id: 'gemini-2.5-pro' },
+    { provider: 'google', id: 'gemini-3.1-pro-preview' },
     { provider: 'google', id: 'gemini-3.8-flash' },
     { provider: 'groq', id: 'openai/gpt-oss-120b' }
   ];
