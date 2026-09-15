@@ -3,24 +3,8 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { groq } from "@ai-sdk/groq";
-import { createOpenAI } from "@ai-sdk/openai";
-import { streamText } from "ai";
 
-const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
-
-const googleV1 = createGoogleGenerativeAI({
-  apiKey: googleKey,
-  baseURL: "https://generativelanguage.googleapis.com/v1"
-});
-
-const googleBeta = createGoogleGenerativeAI({
-  apiKey: googleKey,
-  baseURL: "https://generativelanguage.googleapis.com/v1beta"
-});
-
-function findAgentRouterKey(): string {
+function getApiKey(): string {
   const names = [
     'AGENT_ROUTER_API_KEY',
     'AGENTROUTER_API_KEY',
@@ -43,35 +27,19 @@ function findAgentRouterKey(): string {
   return '';
 }
 
-function getAgentRouterModel(modelId: string, apiKey: string) {
-  const isClaudeOpus = modelId.toLowerCase().includes('claude') || modelId.toLowerCase().includes('opus');
-  const isRealOpenRouterKey = apiKey.startsWith('sk-or-');
-  
-  const baseURL = isRealOpenRouterKey
-    ? 'https://openrouter.ai/api/v1'
-    : (isClaudeOpus ? 'https://co.agentrouter.org' : 'https://co.agentrouter.org/v1');
-
-  const modelName = isRealOpenRouterKey
-    ? (modelId === 'deepseek-v4-flash' ? 'deepseek/deepseek-v4-flash'
-      : modelId === 'gpt-5.6-sol' ? 'openai/gpt-5.6-sol'
-      : modelId === 'claude-opus-5' ? 'anthropic/claude-opus-5'
-      : modelId === 'gpt-6-astra' ? 'openai/gpt-6-astra' : modelId)
-    : modelId;
-
-  const provider = createOpenAI({
-    apiKey: apiKey,
-    baseURL: baseURL,
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'x-api-key': apiKey,
-      'User-Agent': 'claude-cli/1.0.108',
-      'HTTP-Referer': 'https://xam-solver-ai.vercel.app',
-      'X-Title': 'Exam Solver AI'
-    }
-  });
-
-  return provider(modelName);
+function resolveModelId(model: string, baseURL: string): string {
+  if (baseURL.includes('openrouter.ai')) {
+    if (model === 'deepseek-v4-flash') return 'deepseek/deepseek-v4-flash';
+    if (model === 'glm-5.3') return 'z-ai/glm-5.3-flash';
+    if (model === 'gpt-5.6-sol') return 'openai/gpt-5.6-sol';
+    if (model === 'gpt-6-astra') return 'openai/gpt-6-astra';
+    if (model === 'claude-opus-4-8') return 'anthropic/claude-opus-4.8';
+    if (model === 'claude-opus-5') return 'anthropic/claude-opus-5';
+  }
+  return model;
 }
+
+
 
 const SYSTEM_INSTRUCTION = `Você é o motor cognitivo de elite do Exam Solver AI. 
 REGRA ABSOLUTA: Antes de gerar UMA ÚNICA PALAVRA visível ao utilizador, você OBRIGATORIAMENTE deve pensar e resolver a questão dentro da tag XML <thought_process>.
@@ -110,6 +78,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 export async function POST(req: Request) {
   try {
+    const apiKey = getApiKey();
     const supabase = createClient();
     const serviceClient = createServiceClient();
     const db = serviceClient || supabase;
@@ -156,9 +125,20 @@ export async function POST(req: Request) {
       }
     }
 
-    const userPlan = profile?.plan_type || 'pro';
-    if (requestedModel === 'gemini-1.5-pro' && userPlan !== 'ultra' && userPlan !== 'premium') {
-      return new Response(JSON.stringify({ error: "UPGRADE_REQUIRED", message: "O modelo Gemini Pro é exclusivo dos planos Ultra e Premium." }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+    const userPlan = profile?.plan_type || 'free';
+    const isUltra = userPlan === 'ultra' || userPlan === 'premium';
+    const isPro = isUltra || userPlan === 'pro';
+
+    // Trava determinística de planos
+    const ultraModels = ['gpt-6-astra', 'claude-opus-4-8', 'claude-opus-5'];
+    const proModels = ['glm-5.3', 'gpt-5.6-sol'];
+
+    const targetModel = requestedModel;
+    if (ultraModels.includes(targetModel) && !isUltra) {
+      return new Response(JSON.stringify({ error: "UPGRADE_REQUIRED", message: "Este modelo é exclusivo do Plano Ultra." }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (proModels.includes(targetModel) && !isPro) {
+      return new Response(JSON.stringify({ error: "UPGRADE_REQUIRED", message: "Este modelo exige o Plano Pro ou Ultra." }), { status: 403, headers: { 'Content-Type': 'application/json' } });
     }
 
     if (!file && !text) {
@@ -167,8 +147,6 @@ export async function POST(req: Request) {
 
     const userMessageContent = text || "Imagem enviada";
     let imageUrl: string | null = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userPromptParts: any[] = [];
 
     if (file) {
       const validMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
@@ -179,17 +157,8 @@ export async function POST(req: Request) {
       const buffer = await file.arrayBuffer();
       const base64Data = arrayBufferToBase64(buffer);
       imageUrl = `data:${file.type};base64,${base64Data}`;
-      
-      userPromptParts.push({
-        type: 'image',
-        image: buffer
-      });
     }
 
-    if (text) {
-      userPromptParts.push({ type: 'text', text: `Pergunta: ${text}` });
-    }
-    
     if (!isGuest && conversationId && conversationId !== "guest") {
       const { error: insertErr } = await db.from("messages").insert({
         conversation_id: conversationId,
@@ -216,200 +185,162 @@ export async function POST(req: Request) {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const coreMessages: any[] = [];
+    const openAiMessages: any[] = [
+      { role: 'system', content: SYSTEM_INSTRUCTION }
+    ];
+
     if (!isGuest && conversationId && conversationId !== "guest") {
-      const { data: historyData } = await db
+      const { data: previousMessages } = await db
         .from("messages")
         .select("role, content")
         .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: false })
-        .limit(20);
+        .order("created_at", { ascending: true })
+        .limit(10);
 
-      if (historyData && historyData.length > 0) {
-        // Como buscamos DESC para pegar os últimos 20, invertemos para ficar na ordem cronológica ASC
-        historyData.reverse();
-        
-        // Remove a mensagem atual (que foi a última a ser inserida no topo)
-        const previousMsgs = historyData.slice(0, -1);
-        
-        for (const m of previousMsgs) {
-          if (!m.content || !m.content.trim()) continue;
-          
-          // O Vercel AI SDK usa padronizadamente 'user' e 'assistant' (e internamente mapeia para 'model' do Gemini)
-          coreMessages.push({
-            role: m.role === 'ai' ? 'assistant' : 'user',
-            content: m.content
-          });
+      if (previousMessages && previousMessages.length > 0) {
+        for (const m of previousMessages) {
+          if (m.content && m.content.trim()) {
+            openAiMessages.push({
+              role: m.role === 'ai' ? 'assistant' : 'user',
+              content: m.content
+            });
+          }
         }
       }
     }
 
-    // A mensagem atual é o último elemento do coreMessages
-    coreMessages.push({
-      role: 'user',
-      content: userPromptParts
-    });
-
-    // Análise de Intenção (Fase 1: Otimização do Motor)
-    const lowerText = text.toLowerCase();
-    const isMathOrPhysics = lowerText.match(/calcule|resolva|equação|integral|derivada|física|matemática|velocidade|aceleração|x|y/);
-    const useTools = !isMathOrPhysics; // Se for puramente matemático, desligamos as ferramentas
-    const temp = isMathOrPhysics ? 0.1 : 0.4; // Menos entropia para raciocínio exato
-
-    // @ai-sdk/google tools
-    const tools = useTools ? {
-      googleSearch: googleV1.tools.googleSearch({
-        dynamicRetrievalConfig: { mode: 'dynamic', dynamicThreshold: 0.3 }
-      })
-    } : undefined;
-
-    const agentRouterKey = findAgentRouterKey();
-    const groqKey = process.env.GROQ_API_KEY;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let activeTiers: any[] = [];
-
-    const hasImage = !!file;
-    const isUltra = userPlan === 'ultra' || userPlan === 'premium';
-    const isPro = isUltra || userPlan === 'pro';
-
-    if (requestedModel === 'claude-opus-5' || requestedModel === 'gpt-6-astra') {
-      if (!isUltra) {
-        return new Response(JSON.stringify({ error: "UPGRADE_REQUIRED", message: "O modelo Claude Opus 5 é exclusivo do Plano Ultra." }), { status: 403, headers: { 'Content-Type': 'application/json' } });
-      }
-      activeTiers = [
-        ...(agentRouterKey ? [
-          { id: 'claude-opus-5', model: getAgentRouterModel('claude-opus-5', agentRouterKey), label: 'Ultra (Claude 5)', provider: 'agentrouter' },
-          { id: 'gpt-6-astra', model: getAgentRouterModel('gpt-6-astra', agentRouterKey), label: 'Ultra Fallback', provider: 'agentrouter' }
-        ] : []),
-        { id: 'gemini-3.1-pro-preview', model: googleBeta('gemini-3.1-pro-preview'), label: 'Ultra Fallback Google', provider: 'google' }
-      ];
-    } else if (requestedModel === 'gpt-5.6-sol') {
-      if (!isPro) {
-        return new Response(JSON.stringify({ error: "UPGRADE_REQUIRED", message: "O modelo GPT-5.6 exige o Plano Pro ou Ultra." }), { status: 403, headers: { 'Content-Type': 'application/json' } });
-      }
-      activeTiers = [
-        ...(agentRouterKey ? [
-          { id: 'gpt-5.6-sol', model: getAgentRouterModel('gpt-5.6-sol', agentRouterKey), label: 'Pro (GPT-5.6)', provider: 'agentrouter' },
-          { id: 'deepseek-flash', model: getAgentRouterModel('deepseek-v4-flash', agentRouterKey), label: 'Pro Fallback', provider: 'agentrouter' }
-        ] : []),
-        { id: 'gemini-3.1-pro-preview', model: googleBeta('gemini-3.1-pro-preview'), label: 'Pro Fallback Google', provider: 'google' }
-      ];
+    if (imageUrl) {
+      openAiMessages.push({
+        role: 'user',
+        content: [
+          { type: 'text', text: `Pergunta: ${text || 'Resolva esta questão analiticamente.'}` },
+          { type: 'image_url', image_url: { url: imageUrl } }
+        ]
+      });
     } else {
-      // Default / Free tier: deepseek-v4-flash
-      activeTiers = [
-        ...(agentRouterKey ? [
-          { id: 'deepseek-v4-flash', model: getAgentRouterModel('deepseek-v4-flash', agentRouterKey), label: 'Flash (DeepSeek)', provider: 'agentrouter' }
-        ] : []),
-        { id: 'gemini-3.8-flash', model: googleV1('gemini-3.8-flash'), label: 'Google Fallback', provider: 'google' },
-        { id: 'llama-3', model: groq('llama-3.1-8b-instant'), label: 'Groq Fallback', provider: 'groq' }
-      ];
-      // Se houver imagem, mantemos o Gemini flash como vision prioritário e Groq vision como fallback
-      if (hasImage) {
-        activeTiers.push({ id: 'llama-3.2-vision', model: groq('llama-3.2-90b-vision-preview'), label: 'Groq Vision Fallback', provider: 'groq' });
-      }
+      openAiMessages.push({
+        role: 'user',
+        content: `Pergunta: ${text}`
+      });
     }
 
-    if (!googleKey) {
-      activeTiers = activeTiers.filter(t => t.provider !== 'google');
-    }
-    if (!groqKey) {
-      activeTiers = activeTiers.filter(t => t.provider !== 'groq');
+    // Execução Determinística com Fallback automático para deepseek-v4-flash
+    const candidateBaseURLs = [
+      'https://agentrouter.org/v1',
+      'https://co.agentrouter.org/v1',
+      'https://openrouter.ai/api/v1'
+    ];
+
+    const modelsToAttempt = [targetModel];
+    if (targetModel !== 'deepseek-v4-flash') {
+      modelsToAttempt.push('deepseek-v4-flash');
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let streamResult: any = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let usedTier: any = null;
+    let streamResponse: Response | null = null;
+    let actualModelUsed = targetModel;
 
-    for (const tier of activeTiers) {
-      // @ts-expect-error globalThis augmentation
-      if (!globalThis.circuitState) {
-        // @ts-expect-error globalThis augmentation
-        globalThis.circuitState = {};
-      }
-      
-      // @ts-expect-error globalThis augmentation
-      const state = globalThis.circuitState[tier.id] || { fails: 0, lastFail: 0 };
-      // @ts-expect-error globalThis augmentation
-      globalThis.circuitState[tier.id] = state;
-      
-      if (state && state.fails >= 3) {
-        if (Date.now() - state.lastFail < 5 * 60 * 1000) {
-          console.warn(`[CIRCUIT BREAKER] Modelo ${tier.id} bloqueado por 5 minutos. Pulando...`);
-          continue;
-        } else {
-          state.fails = 0;
+    for (const modelToTry of modelsToAttempt) {
+      for (const baseURL of candidateBaseURLs) {
+        try {
+          const res = await fetch(`${baseURL}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Bearer ' + apiKey,
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey,
+              'User-Agent': 'claude-cli/1.0.108',
+              'HTTP-Referer': 'https://xam-solver-ai.vercel.app',
+              'X-Title': 'Exam Solver AI'
+            },
+            body: JSON.stringify({
+              model: resolveModelId(modelToTry, baseURL),
+              messages: openAiMessages,
+              stream: true,
+              temperature: 0.3
+            })
+          });
+
+          if (res.ok && res.body) {
+            streamResponse = res;
+            actualModelUsed = modelToTry;
+            break;
+          }
+        } catch {
+          // Continua para o próximo endpoint/modelo
         }
       }
+      if (streamResponse) break;
+    }
 
-      try {
-        const aiModel = tier.model;
-        const toolsToUse = tier.provider === 'google' ? tools : undefined;
+    if (!streamResponse || !streamResponse.body) {
+      return new Response(JSON.stringify({ error: "⚠️ Servidores de IA temporariamente indisponíveis. Tente novamente." }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+    }
 
-        streamResult = await streamText({
-          model: aiModel,
-          system: SYSTEM_INSTRUCTION,
-          messages: coreMessages,
-          temperature: temp,
-          tools: toolsToUse,
-          async onFinish({ text: finalResponseText }) {
-            if (!isGuest && conversationId && conversationId !== "guest" && profile) {
-              const { error: insertError } = await db.from("messages").insert({
-                conversation_id: conversationId,
-                role: 'ai',
-                content: finalResponseText,
-                model_used: tier.label
-              });
+    // Conversão do SSE (Server-Sent Events) para Text Stream consumível pelo frontend
+    let fullTextAccumulated = "";
+    let sseBuffer = "";
 
-              if (text && text.trim()) {
-                const titleSnippet = text.trim().slice(0, 35) + (text.trim().length > 35 ? "..." : "");
-                await db
-                  .from("conversations")
-                  .update({ title: titleSnippet, updated_at: new Date().toISOString() })
-                  .eq("id", conversationId)
-                  .eq("title", "Novo Atendimento");
+    const transformStream = new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        sseBuffer += new TextDecoder("utf-8").decode(chunk);
+        const lines = sseBuffer.split("\n");
+        sseBuffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed === "data: [DONE]") continue;
+          if (trimmed.startsWith("data: ")) {
+            try {
+              const json = JSON.parse(trimmed.slice(6));
+              const delta = json.choices?.[0]?.delta?.content || "";
+              if (delta) {
+                fullTextAccumulated += delta;
+                controller.enqueue(new TextEncoder().encode(delta));
               }
-
-              // Dupla confirmação de safe-charge
-              const hasMinLength = finalResponseText.length > 50;
-              const isNotErrorMsg = !finalResponseText.includes("### ⚠️ Dados Insuficientes");
-              const hasThoughtTag = finalResponseText.includes("</thought_process>");
-
-              if (!insertError && profile.plan_type !== 'premium') {
-                if (hasMinLength && isNotErrorMsg && hasThoughtTag) {
-                  await db
-                    .from("profiles")
-                    .update({ credits_balance: Math.max(0, profile.credits_balance - 1) })
-                    .eq("id", user!.id);
-                }
-              }
+            } catch {
+              // ignora fragmentos parciais
             }
           }
-        });
+        }
+      },
+      async flush() {
+        if (!isGuest && conversationId && conversationId !== "guest" && profile) {
+          await db.from("messages").insert({
+            conversation_id: conversationId,
+            role: 'ai',
+            content: fullTextAccumulated,
+            model_used: actualModelUsed
+          });
 
-        usedTier = tier;
-        break; // Sucesso, sai do loop
-      } catch (err) {
-        console.error(`[Failover]`, tier.id, err);
-        if (state) {
-          state.fails++;
-          state.lastFail = Date.now();
+          if (text && text.trim()) {
+            const titleSnippet = text.trim().slice(0, 35) + (text.trim().length > 35 ? "..." : "");
+            await db
+              .from("conversations")
+              .update({ title: titleSnippet, updated_at: new Date().toISOString() })
+              .eq("id", conversationId)
+              .eq("title", "Novo Atendimento");
+          }
+
+          if (profile.plan_type !== 'premium') {
+            await db
+              .from("profiles")
+              .update({ credits_balance: Math.max(0, profile.credits_balance - 1) })
+              .eq("id", user!.id);
+          }
         }
       }
-    }
+    });
 
-    if (!streamResult) {
-      return new Response(JSON.stringify({ error: "⚠️ Todos os motores estão ocupados. Tente novamente em instantes." }), { status: 503, headers: { 'Content-Type': 'application/json' } });
-    }
+    const outputStream = streamResponse.body.pipeThrough(transformStream);
 
-    return streamResult.toTextStreamResponse({
+    return new Response(outputStream, {
       headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
         'X-Conversation-Id': conversationId || 'guest',
-        'X-Actual-Model': usedTier.label,
-        'X-Model-Used': usedTier.id
+        'X-Actual-Model': actualModelUsed
       }
     });
+
   } catch (error: unknown) {
     console.error("Chat API Error:", error);
     const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
