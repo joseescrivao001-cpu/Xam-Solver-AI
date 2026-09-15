@@ -15,6 +15,43 @@ const googleV1 = createGoogleGenerativeAI({
   baseURL: "https://generativelanguage.googleapis.com/v1"
 });
 
+const googleBeta = createGoogleGenerativeAI({
+  apiKey: googleKey,
+  baseURL: "https://generativelanguage.googleapis.com/v1beta"
+});
+
+function findOpenRouterKey(): string {
+  const names = [
+    'OPENROUTER_API_KEY',
+    'AGENT_ROUTER_API_KEY',
+    'AGENTROUTER_API_KEY',
+    'OPEN_ROUTER_API_KEY',
+    'OPENROUTER_KEY',
+    'OPEN_ROUTER_KEY',
+    'OPENROUTER_TOKEN',
+    'ROUTER_API_KEY',
+    'NEXT_PUBLIC_OPENROUTER_API_KEY',
+    'NEXT_PUBLIC_AGENT_ROUTER_API_KEY'
+  ];
+  for (const name of names) {
+    const val = process.env[name];
+    if (val && typeof val === 'string' && val.trim().length > 0) return val.trim();
+  }
+  for (const val of Object.values(process.env)) {
+    if (typeof val === 'string' && val.trim().startsWith('sk-or-')) return val.trim();
+  }
+  return '';
+}
+
+function resolveOpenRouterId(id: string): string {
+  if (id.includes('/')) return id;
+  if (id === 'deepseek-v4-flash') return 'deepseek/deepseek-v4-flash';
+  if (id === 'gpt-5.6-sol') return 'openai/gpt-5.6-sol';
+  if (id === 'claude-opus-5') return 'anthropic/claude-opus-5';
+  if (id === 'gpt-6-astra') return 'openai/gpt-6-astra';
+  return id;
+}
+
 const SYSTEM_INSTRUCTION = `Você é o motor cognitivo de elite do Exam Solver AI. 
 REGRA ABSOLUTA: Antes de gerar UMA ÚNICA PALAVRA visível ao utilizador, você OBRIGATORIAMENTE deve pensar e resolver a questão dentro da tag XML <thought_process>.
 
@@ -205,15 +242,15 @@ export async function POST(req: Request) {
       })
     } : undefined;
 
-    const openRouterKey = process.env.AGENT_ROUTER_API_KEY || process.env.OPENROUTER_API_KEY || '';
-    const openrouter = createOpenRouter({
+    const openRouterKey = findOpenRouterKey();
+    const openrouter = openRouterKey ? createOpenRouter({
       apiKey: openRouterKey,
       headers: {
         'Authorization': `Bearer ${openRouterKey}`,
         'HTTP-Referer': 'https://xam-solver-ai.vercel.app',
         'X-Title': 'Exam Solver AI'
       }
-    });
+    }) : null;
 
     const groqKey = process.env.GROQ_API_KEY;
 
@@ -229,29 +266,35 @@ export async function POST(req: Request) {
         return new Response(JSON.stringify({ error: "UPGRADE_REQUIRED", message: "O modelo Claude Opus 5 é exclusivo do Plano Ultra." }), { status: 403, headers: { 'Content-Type': 'application/json' } });
       }
       activeTiers = [
-        { id: 'claude-opus-5', model: openrouter('claude-opus-5'), label: 'Ultra (Claude 5)', provider: 'openrouter' },
-        { id: 'gpt-6-astra', model: openrouter('gpt-6-astra'), label: 'Ultra Fallback', provider: 'openrouter' },
-        { id: 'gemini-3.1-pro-preview', model: googleV1('gemini-3.1-pro-preview'), label: 'Ultra Fallback 2', provider: 'google' }
+        ...(openrouter ? [
+          { id: 'claude-opus-5', model: openrouter(resolveOpenRouterId('claude-opus-5')), label: 'Ultra (Claude 5)', provider: 'openrouter' },
+          { id: 'gpt-6-astra', model: openrouter(resolveOpenRouterId('gpt-6-astra')), label: 'Ultra Fallback', provider: 'openrouter' }
+        ] : []),
+        { id: 'gemini-3.1-pro-preview', model: googleBeta('gemini-3.1-pro-preview'), label: 'Ultra Fallback Google', provider: 'google' }
       ];
     } else if (requestedModel === 'gpt-5.6-sol') {
       if (!isPro) {
         return new Response(JSON.stringify({ error: "UPGRADE_REQUIRED", message: "O modelo GPT-5.6 exige o Plano Pro ou Ultra." }), { status: 403, headers: { 'Content-Type': 'application/json' } });
       }
       activeTiers = [
-        { id: 'gpt-5.6-sol', model: openrouter('gpt-5.6-sol'), label: 'Pro (GPT-5.6)', provider: 'openrouter' },
-        { id: 'deepseek-flash', model: openrouter('deepseek-v4-flash'), label: 'Pro Fallback', provider: 'openrouter' },
-        { id: 'gemini-3.1-pro-preview', model: googleV1('gemini-3.1-pro-preview'), label: 'Pro Fallback 2', provider: 'google' }
+        ...(openrouter ? [
+          { id: 'gpt-5.6-sol', model: openrouter(resolveOpenRouterId('gpt-5.6-sol')), label: 'Pro (GPT-5.6)', provider: 'openrouter' },
+          { id: 'deepseek-flash', model: openrouter(resolveOpenRouterId('deepseek-v4-flash')), label: 'Pro Fallback', provider: 'openrouter' }
+        ] : []),
+        { id: 'gemini-3.1-pro-preview', model: googleBeta('gemini-3.1-pro-preview'), label: 'Pro Fallback Google', provider: 'google' }
       ];
     } else {
       // Default / Free tier: deepseek-v4-flash
       activeTiers = [
-        { id: 'deepseek-v4-flash', model: openrouter('deepseek-v4-flash'), label: 'Flash (DeepSeek)', provider: 'openrouter' },
+        ...(openrouter ? [
+          { id: 'deepseek-v4-flash', model: openrouter(resolveOpenRouterId('deepseek-v4-flash')), label: 'Flash (DeepSeek)', provider: 'openrouter' }
+        ] : []),
         { id: 'gemini-3.8-flash', model: googleV1('gemini-3.8-flash'), label: 'Google Fallback', provider: 'google' },
-        { id: 'llama-3', model: groq('llama3-70b-8192'), label: 'Groq Fallback', provider: 'groq' }
+        { id: 'llama-3', model: groq('llama-3.1-8b-instant'), label: 'Groq Fallback', provider: 'groq' }
       ];
-      // Se houver imagem, precisamos garantir que o Groq use o modelo vision
+      // Se houver imagem, mantemos o Gemini flash como vision prioritário e Groq vision como fallback
       if (hasImage) {
-        activeTiers[2] = { id: 'llama-3.2-vision', model: groq('llama-3.2-90b-vision-preview'), label: 'Groq Vision Fallback', provider: 'groq' };
+        activeTiers.push({ id: 'llama-3.2-vision', model: groq('llama-3.2-90b-vision-preview'), label: 'Groq Vision Fallback', provider: 'groq' });
       }
     }
 

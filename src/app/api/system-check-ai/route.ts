@@ -12,16 +12,61 @@ const googleV1 = createGoogleGenerativeAI({
   baseURL: "https://generativelanguage.googleapis.com/v1"
 });
 
+const googleBeta = createGoogleGenerativeAI({
+  apiKey: googleKey,
+  baseURL: "https://generativelanguage.googleapis.com/v1beta"
+});
+
+function findOpenRouterKey(): { key: string; sourceName: string } {
+  const names = [
+    'OPENROUTER_API_KEY',
+    'AGENT_ROUTER_API_KEY',
+    'AGENTROUTER_API_KEY',
+    'OPEN_ROUTER_API_KEY',
+    'OPENROUTER_KEY',
+    'OPEN_ROUTER_KEY',
+    'OPENROUTER_TOKEN',
+    'ROUTER_API_KEY',
+    'NEXT_PUBLIC_OPENROUTER_API_KEY',
+    'NEXT_PUBLIC_AGENT_ROUTER_API_KEY'
+  ];
+
+  for (const name of names) {
+    const val = process.env[name];
+    if (val && typeof val === 'string' && val.trim().length > 0) {
+      return { key: val.trim(), sourceName: name };
+    }
+  }
+
+  for (const [key, val] of Object.entries(process.env)) {
+    if (typeof val === 'string' && val.trim().startsWith('sk-or-')) {
+      return { key: val.trim(), sourceName: key };
+    }
+  }
+
+  return { key: '', sourceName: 'NOT_FOUND' };
+}
+
+function resolveOpenRouterId(id: string): string {
+  if (id.includes('/')) return id;
+  if (id === 'deepseek-v4-flash') return 'deepseek/deepseek-v4-flash';
+  if (id === 'gpt-5.6-sol') return 'openai/gpt-5.6-sol';
+  if (id === 'claude-opus-5') return 'anthropic/claude-opus-5';
+  if (id === 'gpt-6-astra') return 'openai/gpt-6-astra';
+  return id;
+}
+
 export async function GET() {
-  const openRouterKey = process.env.AGENT_ROUTER_API_KEY || process.env.OPENROUTER_API_KEY || '';
-  const openrouter = createOpenRouter({
+  const { key: openRouterKey, sourceName: openRouterKeySource } = findOpenRouterKey();
+
+  const openrouter = openRouterKey ? createOpenRouter({
     apiKey: openRouterKey,
     headers: {
       'Authorization': `Bearer ${openRouterKey}`,
       'HTTP-Referer': 'https://xam-solver-ai.vercel.app',
       'X-Title': 'Exam Solver AI'
     }
-  });
+  }) : null;
 
   const apiKey = googleKey || "";
   
@@ -46,16 +91,26 @@ export async function GET() {
     { provider: 'openrouter', id: 'gpt-5.6-sol' },
     { provider: 'openrouter', id: 'claude-opus-5' },
     { provider: 'google-v1', id: 'gemini-3.8-flash' },
-    { provider: 'google-v1', id: 'gemini-3.1-pro-preview' },
-    { provider: 'groq', id: 'llama3-70b-8192' }
+    { provider: 'google-beta', id: 'gemini-3.1-pro-preview' },
+    { provider: 'groq', id: 'llama-3.1-8b-instant' }
   ];
 
   for (const model of models) {
     try {
+      if (model.provider === 'openrouter' && !openrouter) {
+        results[model.id] = {
+          status: 'error',
+          error: 'OPENROUTER_API_KEY não configurada na Vercel (adicione nas Environment Variables)'
+        };
+        continue;
+      }
+
       const aiModel = model.provider === 'groq' 
         ? groq(model.id) 
         : model.provider === 'openrouter'
-        ? openrouter(model.id)
+        ? openrouter!(resolveOpenRouterId(model.id))
+        : model.provider === 'google-beta'
+        ? googleBeta(model.id)
         : googleV1(model.id);
       
       const { text } = await generateText({
@@ -73,7 +128,8 @@ export async function GET() {
   const envKeys = {
     google: !!(process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY),
     groq: !!process.env.GROQ_API_KEY,
-    openrouter: !!(process.env.AGENT_ROUTER_API_KEY || process.env.OPENROUTER_API_KEY)
+    openrouter: !!openRouterKey,
+    openrouterSource: openRouterKeySource
   };
 
   return new Response(JSON.stringify({
@@ -87,3 +143,4 @@ export async function GET() {
     headers: { 'Content-Type': 'application/json' }
   });
 }
+
