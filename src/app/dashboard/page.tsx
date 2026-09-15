@@ -118,7 +118,7 @@ export default function ExamSolverGrand() {
   const [inputText, setInputText] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
-  const [modelMode, setModelMode] = useState("gemini-3.6-flash");
+  const [modelMode, setModelMode] = useState("deepseek-v4-flash");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fallbackWarning, setFallbackWarning] = useState<string | null>(null);
@@ -1950,7 +1950,7 @@ export default function ExamSolverGrand() {
                             </h3>
                           </div>
                           <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-medium hidden sm:inline">
-                            Alimentado por Gemini 3.6 Flash
+                            Alimentado por Agent Router & Gemini
                           </span>
                         </div>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
@@ -2588,30 +2588,31 @@ export default function ExamSolverGrand() {
                     <div className="flex items-center gap-1 pb-1 pr-1 shrink-0">
                       
                       {/* Model Selector Pill */}
+                      {/* Model Selector Pill */}
                       <div className="relative" ref={modelRef}>
                         <button onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
-                          {modelMode === "gemini-1.5-flash" ? "Instant" : "Pro"}
+                          {modelMode === "claude-opus-5" || modelMode === "gpt-6-astra" ? "Ultra (Claude 5)" : modelMode === "gpt-5.6-sol" ? "Pro (GPT-5.6)" : "Flash (DeepSeek)"}
                           <ChevronDown className="w-3.5 h-3.5" />
                         </button>
                         {isModelDropdownOpen && (
                           <div className="absolute bottom-full right-0 mb-2 w-52 bg-white dark:bg-[#252528] border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden py-1 z-50">
                             <button 
-                              onClick={() => { setModelMode("gemini-1.5-flash"); setIsModelDropdownOpen(false); }} 
+                              onClick={() => { setModelMode("deepseek-v4-flash"); setIsModelDropdownOpen(false); }} 
                               className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 flex items-center justify-between"
                             >
                               <div>
-                                <p className="font-medium text-xs">Instant (Flash)</p>
-                                <p className="text-[10px] text-zinc-400">Rápido & Direto</p>
+                                <p className="font-medium text-xs">Flash (DeepSeek)</p>
+                                <p className="text-[10px] text-zinc-400">Rápido e Preciso</p>
                               </div>
-                              {modelMode === "gemini-1.5-flash" && <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                              {modelMode === "deepseek-v4-flash" && <Check className="w-3.5 h-3.5 text-emerald-500" />}
                             </button>
                             <button 
                               onClick={() => { 
-                                if (userPlan !== 'ultra' && userPlan !== 'premium') {
+                                if (userPlan === 'free') {
                                   setIsPricingOpen(true);
-                                  setError("O modelo Pro (Raciocínio Profundo) exige o Plano Ultra ou Premium.");
+                                  setError("O modelo GPT-5.6 exige o Plano Pro ou Ultra.");
                                 } else {
-                                  setModelMode("gemini-1.5-pro"); 
+                                  setModelMode("gpt-5.6-sol"); 
                                 }
                                 setIsModelDropdownOpen(false); 
                               }} 
@@ -2619,14 +2620,37 @@ export default function ExamSolverGrand() {
                             >
                               <div>
                                 <p className="font-medium text-xs flex items-center gap-1.5">
-                                  Pro (Raciocínio)
-                                  {userPlan !== 'ultra' && userPlan !== 'premium' && (
-                                    <span className="text-[9px] bg-violet-500/20 text-violet-400 font-bold px-1.5 py-0.5 rounded border border-violet-500/30 uppercase">Ultra</span>
+                                  Pro (GPT-5.6)
+                                  {userPlan === 'free' && (
+                                    <span className="text-[9px] bg-blue-500/20 text-blue-400 font-bold px-1.5 py-0.5 rounded border border-blue-500/30 uppercase">PRO</span>
                                   )}
                                 </p>
-                                <p className="text-[10px] text-zinc-400">Passo a passo avançado</p>
+                                <p className="text-[10px] text-zinc-400">Raciocínio Balanceado</p>
                               </div>
-                              {modelMode === "gemini-1.5-pro" && <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                              {modelMode === "gpt-5.6-sol" && <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                            </button>
+                            <button 
+                              onClick={() => { 
+                                if (userPlan !== 'ultra' && userPlan !== 'premium') {
+                                  setIsPricingOpen(true);
+                                  setError("O modelo Claude Opus 5 exige o Plano Ultra.");
+                                } else {
+                                  setModelMode("claude-opus-5"); 
+                                }
+                                setIsModelDropdownOpen(false); 
+                              }} 
+                              className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800"
+                            >
+                              <div>
+                                <p className="font-medium text-xs flex items-center gap-1.5">
+                                  Ultra (Claude 5)
+                                  {userPlan !== 'ultra' && userPlan !== 'premium' && (
+                                    <span className="text-[9px] bg-violet-500/20 text-violet-400 font-bold px-1.5 py-0.5 rounded border border-violet-500/30 uppercase">ULTRA</span>
+                                  )}
+                                </p>
+                                <p className="text-[10px] text-zinc-400">Inteligência Máxima</p>
+                              </div>
+                              {(modelMode === "claude-opus-5" || modelMode === "gpt-6-astra") && <Check className="w-3.5 h-3.5 text-emerald-500" />}
                             </button>
                           </div>
                         )}

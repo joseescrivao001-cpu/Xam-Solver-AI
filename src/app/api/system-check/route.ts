@@ -219,10 +219,9 @@ export async function GET() {
   let geminiError: string | null = null;
   if (geminiApiKey) {
     let candidateModels = [
-      "gemini-3.1-pro-preview",
-      "gemini-3.8-flash",
-      "gemini-1.5-flash",
       "gemini-1.5-pro",
+      "gemini-1.5-flash",
+      "gemini-3.8-flash",
     ];
 
     try {

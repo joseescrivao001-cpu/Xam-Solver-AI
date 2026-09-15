@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { groq } from "@ai-sdk/groq";
+import { createOpenAI } from "@ai-sdk/openai";
 import { streamText } from "ai";
 
 const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
@@ -14,9 +14,11 @@ const googleV1 = createGoogleGenerativeAI({
   baseURL: "https://generativelanguage.googleapis.com/v1"
 });
 
-const googleBeta = createGoogleGenerativeAI({
-  apiKey: googleKey,
-  baseURL: "https://generativelanguage.googleapis.com/v1beta"
+
+
+const openrouter = createOpenAI({
+  apiKey: process.env.AGENT_ROUTER_API_KEY || process.env.OPENROUTER_API_KEY || 'dummy_key',
+  baseURL: 'https://openrouter.ai/api/v1',
 });
 
 const SYSTEM_INSTRUCTION = `Você é o motor cognitivo de elite do Exam Solver AI. 
@@ -204,25 +206,52 @@ export async function POST(req: Request) {
 
     // @ai-sdk/google tools
     const tools = useTools ? {
-      googleSearch: googleBeta.tools.googleSearch({
+      googleSearch: googleV1.tools.googleSearch({
         dynamicRetrievalConfig: { mode: 'dynamic', dynamicThreshold: 0.3 }
       })
     } : undefined;
 
     const groqKey = process.env.GROQ_API_KEY;
 
-    const TIERS = [
-      { id: 'gemini-pro', model: googleBeta('gemini-3.1-pro-preview'), label: 'Tier 1', provider: 'google' },
-      { id: 'gemini-flash', model: googleV1('gemini-3.8-flash'), label: 'Tier 2', provider: 'google' },
-      { id: 'groq-gptoss', model: groq('openai/gpt-oss-120b'), label: 'Tier 3 Fallback', provider: 'groq' }
-    ];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let activeTiers: any[] = [];
 
-    let activeTiers = TIERS;
+    const hasImage = !!file;
+    const isUltra = userPlan === 'ultra' || userPlan === 'premium';
+    const isPro = isUltra || userPlan === 'pro';
+
+    if (requestedModel === 'claude-opus-5' || requestedModel === 'gpt-6-astra') {
+      if (!isUltra) {
+        return new Response(JSON.stringify({ error: "UPGRADE_REQUIRED", message: "O modelo Claude Opus 5 é exclusivo do Plano Ultra." }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+      }
+      activeTiers = [
+        { id: 'claude-opus-5', model: openrouter('claude-opus-5'), label: 'Ultra (Claude 5)', provider: 'openrouter' },
+        { id: 'gpt-6-astra', model: openrouter('gpt-6-astra'), label: 'Ultra Fallback', provider: 'openrouter' }
+      ];
+    } else if (requestedModel === 'gpt-5.6-sol') {
+      if (!isPro) {
+        return new Response(JSON.stringify({ error: "UPGRADE_REQUIRED", message: "O modelo GPT-5.6 exige o Plano Pro ou Ultra." }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+      }
+      activeTiers = [
+        { id: 'gpt-5.6-sol', model: openrouter('gpt-5.6-sol'), label: 'Pro (GPT-5.6)', provider: 'openrouter' },
+        { id: 'deepseek-flash', model: openrouter('deepseek-v4-flash'), label: 'Pro Fallback', provider: 'openrouter' }
+      ];
+    } else {
+      // Default / Free tier: deepseek-v4-flash
+      activeTiers = [
+        { id: 'deepseek-v4-flash', model: openrouter('deepseek-v4-flash'), label: 'Flash (DeepSeek)', provider: 'openrouter' }
+      ];
+      // Mantém fallback vision para imagens, garantindo resiliência
+      if (hasImage) {
+        activeTiers.push({ id: 'gemini-flash', model: googleV1('gemini-1.5-flash'), label: 'Vision Fallback', provider: 'google' });
+      }
+    }
+
     if (!googleKey) {
-      activeTiers = TIERS.filter(t => t.id === 'groq-gptoss');
+      activeTiers = activeTiers.filter(t => t.provider !== 'google');
     }
     if (!groqKey) {
-      activeTiers = activeTiers.filter(t => t.id !== 'groq-gptoss');
+      activeTiers = activeTiers.filter(t => t.provider !== 'groq');
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -234,15 +263,14 @@ export async function POST(req: Request) {
       // @ts-expect-error globalThis augmentation
       if (!globalThis.circuitState) {
         // @ts-expect-error globalThis augmentation
-        globalThis.circuitState = {
-          'gemini-pro': { fails: 0, lastFail: 0 },
-          'gemini-flash': { fails: 0, lastFail: 0 },
-          'groq-gptoss': { fails: 0, lastFail: 0 }
-        };
+        globalThis.circuitState = {};
       }
       
       // @ts-expect-error globalThis augmentation
-      const state = globalThis.circuitState[tier.id];
+      const state = globalThis.circuitState[tier.id] || { fails: 0, lastFail: 0 };
+      // @ts-expect-error globalThis augmentation
+      globalThis.circuitState[tier.id] = state;
+      
       if (state && state.fails >= 3) {
         if (Date.now() - state.lastFail < 5 * 60 * 1000) {
           console.warn(`[CIRCUIT BREAKER] Modelo ${tier.id} bloqueado por 5 minutos. Pulando...`);
