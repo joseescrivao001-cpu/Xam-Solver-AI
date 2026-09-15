@@ -17,6 +17,7 @@ export async function GET() {
   const openrouter = createOpenRouter({
     apiKey: openRouterKey,
     headers: {
+      'Authorization': `Bearer ${openRouterKey}`,
       'HTTP-Referer': 'https://xam-solver-ai.vercel.app',
       'X-Title': 'Exam Solver AI'
     }
@@ -45,8 +46,8 @@ export async function GET() {
     { provider: 'openrouter', id: 'gpt-5.6-sol' },
     { provider: 'openrouter', id: 'claude-opus-5' },
     { provider: 'google-v1', id: 'gemini-3.8-flash' },
-    { provider: 'google-v1', id: 'gemini-2.5-pro' },
-    { provider: 'groq', id: 'llama-3.3-70b-versatile' }
+    { provider: 'google-v1', id: 'gemini-3.1-pro-preview' },
+    { provider: 'groq', id: 'llama3-70b-8192' }
   ];
 
   for (const model of models) {

@@ -205,11 +205,11 @@ export async function POST(req: Request) {
       })
     } : undefined;
 
-    // Inicialização dinâmica do OpenRouter para garantir que lê as vars do Edge no request time
     const openRouterKey = process.env.AGENT_ROUTER_API_KEY || process.env.OPENROUTER_API_KEY || '';
     const openrouter = createOpenRouter({
       apiKey: openRouterKey,
       headers: {
+        'Authorization': `Bearer ${openRouterKey}`,
         'HTTP-Referer': 'https://xam-solver-ai.vercel.app',
         'X-Title': 'Exam Solver AI'
       }
@@ -231,7 +231,7 @@ export async function POST(req: Request) {
       activeTiers = [
         { id: 'claude-opus-5', model: openrouter('claude-opus-5'), label: 'Ultra (Claude 5)', provider: 'openrouter' },
         { id: 'gpt-6-astra', model: openrouter('gpt-6-astra'), label: 'Ultra Fallback', provider: 'openrouter' },
-        { id: 'gemini-3.8-flash', model: googleV1('gemini-3.8-flash'), label: 'Ultra Fallback 2', provider: 'google' }
+        { id: 'gemini-3.1-pro-preview', model: googleV1('gemini-3.1-pro-preview'), label: 'Ultra Fallback 2', provider: 'google' }
       ];
     } else if (requestedModel === 'gpt-5.6-sol') {
       if (!isPro) {
@@ -240,14 +240,14 @@ export async function POST(req: Request) {
       activeTiers = [
         { id: 'gpt-5.6-sol', model: openrouter('gpt-5.6-sol'), label: 'Pro (GPT-5.6)', provider: 'openrouter' },
         { id: 'deepseek-flash', model: openrouter('deepseek-v4-flash'), label: 'Pro Fallback', provider: 'openrouter' },
-        { id: 'gemini-3.8-flash', model: googleV1('gemini-3.8-flash'), label: 'Pro Fallback 2', provider: 'google' }
+        { id: 'gemini-3.1-pro-preview', model: googleV1('gemini-3.1-pro-preview'), label: 'Pro Fallback 2', provider: 'google' }
       ];
     } else {
       // Default / Free tier: deepseek-v4-flash
       activeTiers = [
         { id: 'deepseek-v4-flash', model: openrouter('deepseek-v4-flash'), label: 'Flash (DeepSeek)', provider: 'openrouter' },
         { id: 'gemini-3.8-flash', model: googleV1('gemini-3.8-flash'), label: 'Google Fallback', provider: 'google' },
-        { id: 'llama-3.3', model: groq('llama-3.3-70b-versatile'), label: 'Groq Fallback', provider: 'groq' }
+        { id: 'llama-3', model: groq('llama3-70b-8192'), label: 'Groq Fallback', provider: 'groq' }
       ];
       // Se houver imagem, precisamos garantir que o Groq use o modelo vision
       if (hasImage) {
