@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { groq } from "@ai-sdk/groq";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { createOpenAI } from "@ai-sdk/openai";
 import { streamText } from "ai";
 
 const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
@@ -20,36 +20,44 @@ const googleBeta = createGoogleGenerativeAI({
   baseURL: "https://generativelanguage.googleapis.com/v1beta"
 });
 
-function findOpenRouterKey(): string {
+function findAgentRouterKey(): string {
   const names = [
-    'OPENROUTER_API_KEY',
     'AGENT_ROUTER_API_KEY',
     'AGENTROUTER_API_KEY',
+    'OPENROUTER_API_KEY',
     'OPEN_ROUTER_API_KEY',
+    'AGENT_ROUTER_KEY',
+    'AGENTROUTER_KEY',
     'OPENROUTER_KEY',
-    'OPEN_ROUTER_KEY',
-    'OPENROUTER_TOKEN',
     'ROUTER_API_KEY',
-    'NEXT_PUBLIC_OPENROUTER_API_KEY',
-    'NEXT_PUBLIC_AGENT_ROUTER_API_KEY'
+    'NEXT_PUBLIC_AGENT_ROUTER_API_KEY',
+    'NEXT_PUBLIC_OPENROUTER_API_KEY'
   ];
   for (const name of names) {
     const val = process.env[name];
     if (val && typeof val === 'string' && val.trim().length > 0) return val.trim();
   }
   for (const val of Object.values(process.env)) {
-    if (typeof val === 'string' && val.trim().startsWith('sk-or-')) return val.trim();
+    if (typeof val === 'string' && (val.trim().startsWith('sk-') || val.trim().startsWith('ar-'))) return val.trim();
   }
   return '';
 }
 
-function resolveOpenRouterId(id: string): string {
-  if (id.includes('/')) return id;
-  if (id === 'deepseek-v4-flash') return 'deepseek/deepseek-v4-flash';
-  if (id === 'gpt-5.6-sol') return 'openai/gpt-5.6-sol';
-  if (id === 'claude-opus-5') return 'anthropic/claude-opus-5';
-  if (id === 'gpt-6-astra') return 'openai/gpt-6-astra';
-  return id;
+function getAgentRouterModel(modelId: string, apiKey: string) {
+  // Claude Opus -> https://agentrouter.org
+  // DeepSeek e outros -> https://agentrouter.org/v1
+  const isClaudeOpus = modelId.toLowerCase().includes('claude') || modelId.toLowerCase().includes('opus');
+  const baseURL = isClaudeOpus ? 'https://agentrouter.org' : 'https://agentrouter.org/v1';
+
+  const provider = createOpenAI({
+    apiKey: apiKey,
+    baseURL: baseURL,
+    headers: {
+      'Authorization': `Bearer ${apiKey}`
+    }
+  });
+
+  return provider(modelId);
 }
 
 const SYSTEM_INSTRUCTION = `Você é o motor cognitivo de elite do Exam Solver AI. 
@@ -242,16 +250,7 @@ export async function POST(req: Request) {
       })
     } : undefined;
 
-    const openRouterKey = findOpenRouterKey();
-    const openrouter = openRouterKey ? createOpenRouter({
-      apiKey: openRouterKey,
-      headers: {
-        'Authorization': `Bearer ${openRouterKey}`,
-        'HTTP-Referer': 'https://xam-solver-ai.vercel.app',
-        'X-Title': 'Exam Solver AI'
-      }
-    }) : null;
-
+    const agentRouterKey = findAgentRouterKey();
     const groqKey = process.env.GROQ_API_KEY;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -266,9 +265,9 @@ export async function POST(req: Request) {
         return new Response(JSON.stringify({ error: "UPGRADE_REQUIRED", message: "O modelo Claude Opus 5 é exclusivo do Plano Ultra." }), { status: 403, headers: { 'Content-Type': 'application/json' } });
       }
       activeTiers = [
-        ...(openrouter ? [
-          { id: 'claude-opus-5', model: openrouter(resolveOpenRouterId('claude-opus-5')), label: 'Ultra (Claude 5)', provider: 'openrouter' },
-          { id: 'gpt-6-astra', model: openrouter(resolveOpenRouterId('gpt-6-astra')), label: 'Ultra Fallback', provider: 'openrouter' }
+        ...(agentRouterKey ? [
+          { id: 'claude-opus-5', model: getAgentRouterModel('claude-opus-5', agentRouterKey), label: 'Ultra (Claude 5)', provider: 'agentrouter' },
+          { id: 'gpt-6-astra', model: getAgentRouterModel('gpt-6-astra', agentRouterKey), label: 'Ultra Fallback', provider: 'agentrouter' }
         ] : []),
         { id: 'gemini-3.1-pro-preview', model: googleBeta('gemini-3.1-pro-preview'), label: 'Ultra Fallback Google', provider: 'google' }
       ];
@@ -277,17 +276,17 @@ export async function POST(req: Request) {
         return new Response(JSON.stringify({ error: "UPGRADE_REQUIRED", message: "O modelo GPT-5.6 exige o Plano Pro ou Ultra." }), { status: 403, headers: { 'Content-Type': 'application/json' } });
       }
       activeTiers = [
-        ...(openrouter ? [
-          { id: 'gpt-5.6-sol', model: openrouter(resolveOpenRouterId('gpt-5.6-sol')), label: 'Pro (GPT-5.6)', provider: 'openrouter' },
-          { id: 'deepseek-flash', model: openrouter(resolveOpenRouterId('deepseek-v4-flash')), label: 'Pro Fallback', provider: 'openrouter' }
+        ...(agentRouterKey ? [
+          { id: 'gpt-5.6-sol', model: getAgentRouterModel('gpt-5.6-sol', agentRouterKey), label: 'Pro (GPT-5.6)', provider: 'agentrouter' },
+          { id: 'deepseek-flash', model: getAgentRouterModel('deepseek-v4-flash', agentRouterKey), label: 'Pro Fallback', provider: 'agentrouter' }
         ] : []),
         { id: 'gemini-3.1-pro-preview', model: googleBeta('gemini-3.1-pro-preview'), label: 'Pro Fallback Google', provider: 'google' }
       ];
     } else {
       // Default / Free tier: deepseek-v4-flash
       activeTiers = [
-        ...(openrouter ? [
-          { id: 'deepseek-v4-flash', model: openrouter(resolveOpenRouterId('deepseek-v4-flash')), label: 'Flash (DeepSeek)', provider: 'openrouter' }
+        ...(agentRouterKey ? [
+          { id: 'deepseek-v4-flash', model: getAgentRouterModel('deepseek-v4-flash', agentRouterKey), label: 'Flash (DeepSeek)', provider: 'agentrouter' }
         ] : []),
         { id: 'gemini-3.8-flash', model: googleV1('gemini-3.8-flash'), label: 'Google Fallback', provider: 'google' },
         { id: 'llama-3', model: groq('llama-3.1-8b-instant'), label: 'Groq Fallback', provider: 'groq' }
@@ -333,7 +332,7 @@ export async function POST(req: Request) {
 
       try {
         const aiModel = tier.model;
-        const toolsToUse = tier.provider === 'groq' ? undefined : tools;
+        const toolsToUse = tier.provider === 'google' ? tools : undefined;
 
         streamResult = await streamText({
           model: aiModel,
