@@ -44,20 +44,33 @@ function findAgentRouterKey(): string {
 }
 
 function getAgentRouterModel(modelId: string, apiKey: string) {
-  // Claude Opus -> https://agentrouter.org
-  // DeepSeek e outros -> https://agentrouter.org/v1
   const isClaudeOpus = modelId.toLowerCase().includes('claude') || modelId.toLowerCase().includes('opus');
-  const baseURL = isClaudeOpus ? 'https://agentrouter.org' : 'https://agentrouter.org/v1';
+  const isRealOpenRouterKey = apiKey.startsWith('sk-or-');
+  
+  const baseURL = isRealOpenRouterKey
+    ? 'https://openrouter.ai/api/v1'
+    : (isClaudeOpus ? 'https://co.agentrouter.org' : 'https://co.agentrouter.org/v1');
+
+  const modelName = isRealOpenRouterKey
+    ? (modelId === 'deepseek-v4-flash' ? 'deepseek/deepseek-v4-flash'
+      : modelId === 'gpt-5.6-sol' ? 'openai/gpt-5.6-sol'
+      : modelId === 'claude-opus-5' ? 'anthropic/claude-opus-5'
+      : modelId === 'gpt-6-astra' ? 'openai/gpt-6-astra' : modelId)
+    : modelId;
 
   const provider = createOpenAI({
     apiKey: apiKey,
     baseURL: baseURL,
     headers: {
-      'Authorization': `Bearer ${apiKey}`
+      'Authorization': `Bearer ${apiKey}`,
+      'x-api-key': apiKey,
+      'User-Agent': 'claude-cli/1.0.108',
+      'HTTP-Referer': 'https://xam-solver-ai.vercel.app',
+      'X-Title': 'Exam Solver AI'
     }
   });
 
-  return provider(modelId);
+  return provider(modelName);
 }
 
 const SYSTEM_INSTRUCTION = `Você é o motor cognitivo de elite do Exam Solver AI. 
