@@ -4,7 +4,8 @@ export const dynamic = 'force-dynamic';
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { createOpenAI } from "@ai-sdk/openai";
+import { groq } from "@ai-sdk/groq";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { streamText } from "ai";
 
 const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
@@ -12,13 +13,6 @@ const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI
 const googleV1 = createGoogleGenerativeAI({
   apiKey: googleKey,
   baseURL: "https://generativelanguage.googleapis.com/v1"
-});
-
-
-
-const openrouter = createOpenAI({
-  apiKey: process.env.AGENT_ROUTER_API_KEY || process.env.OPENROUTER_API_KEY || 'dummy_key',
-  baseURL: 'https://openrouter.ai/api/v1',
 });
 
 const SYSTEM_INSTRUCTION = `Você é o motor cognitivo de elite do Exam Solver AI. 
@@ -211,6 +205,16 @@ export async function POST(req: Request) {
       })
     } : undefined;
 
+    // Inicialização dinâmica do OpenRouter para garantir que lê as vars do Edge no request time
+    const openRouterKey = process.env.AGENT_ROUTER_API_KEY || process.env.OPENROUTER_API_KEY || '';
+    const openrouter = createOpenRouter({
+      apiKey: openRouterKey,
+      headers: {
+        'HTTP-Referer': 'https://xam-solver-ai.vercel.app',
+        'X-Title': 'Exam Solver AI'
+      }
+    });
+
     const groqKey = process.env.GROQ_API_KEY;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -226,7 +230,8 @@ export async function POST(req: Request) {
       }
       activeTiers = [
         { id: 'claude-opus-5', model: openrouter('claude-opus-5'), label: 'Ultra (Claude 5)', provider: 'openrouter' },
-        { id: 'gpt-6-astra', model: openrouter('gpt-6-astra'), label: 'Ultra Fallback', provider: 'openrouter' }
+        { id: 'gpt-6-astra', model: openrouter('gpt-6-astra'), label: 'Ultra Fallback', provider: 'openrouter' },
+        { id: 'gemini-3.8-flash', model: googleV1('gemini-3.8-flash'), label: 'Ultra Fallback 2', provider: 'google' }
       ];
     } else if (requestedModel === 'gpt-5.6-sol') {
       if (!isPro) {
@@ -234,16 +239,19 @@ export async function POST(req: Request) {
       }
       activeTiers = [
         { id: 'gpt-5.6-sol', model: openrouter('gpt-5.6-sol'), label: 'Pro (GPT-5.6)', provider: 'openrouter' },
-        { id: 'deepseek-flash', model: openrouter('deepseek-v4-flash'), label: 'Pro Fallback', provider: 'openrouter' }
+        { id: 'deepseek-flash', model: openrouter('deepseek-v4-flash'), label: 'Pro Fallback', provider: 'openrouter' },
+        { id: 'gemini-3.8-flash', model: googleV1('gemini-3.8-flash'), label: 'Pro Fallback 2', provider: 'google' }
       ];
     } else {
       // Default / Free tier: deepseek-v4-flash
       activeTiers = [
-        { id: 'deepseek-v4-flash', model: openrouter('deepseek-v4-flash'), label: 'Flash (DeepSeek)', provider: 'openrouter' }
+        { id: 'deepseek-v4-flash', model: openrouter('deepseek-v4-flash'), label: 'Flash (DeepSeek)', provider: 'openrouter' },
+        { id: 'gemini-3.8-flash', model: googleV1('gemini-3.8-flash'), label: 'Google Fallback', provider: 'google' },
+        { id: 'llama-3.3', model: groq('llama-3.3-70b-versatile'), label: 'Groq Fallback', provider: 'groq' }
       ];
-      // Mantém fallback vision para imagens, garantindo resiliência
+      // Se houver imagem, precisamos garantir que o Groq use o modelo vision
       if (hasImage) {
-        activeTiers.push({ id: 'gemini-flash', model: googleV1('gemini-1.5-flash'), label: 'Vision Fallback', provider: 'google' });
+        activeTiers[2] = { id: 'llama-3.2-vision', model: groq('llama-3.2-90b-vision-preview'), label: 'Groq Vision Fallback', provider: 'groq' };
       }
     }
 

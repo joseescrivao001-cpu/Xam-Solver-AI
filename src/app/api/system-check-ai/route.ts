@@ -2,7 +2,7 @@ export const runtime = 'edge';
 
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { groq } from "@ai-sdk/groq";
-import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText } from "ai";
 
 const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
@@ -12,12 +12,16 @@ const googleV1 = createGoogleGenerativeAI({
   baseURL: "https://generativelanguage.googleapis.com/v1"
 });
 
-const openrouter = createOpenAI({
-  apiKey: process.env.AGENT_ROUTER_API_KEY || process.env.OPENROUTER_API_KEY || 'dummy_key',
-  baseURL: 'https://openrouter.ai/api/v1',
-});
-
 export async function GET() {
+  const openRouterKey = process.env.AGENT_ROUTER_API_KEY || process.env.OPENROUTER_API_KEY || '';
+  const openrouter = createOpenRouter({
+    apiKey: openRouterKey,
+    headers: {
+      'HTTP-Referer': 'https://xam-solver-ai.vercel.app',
+      'X-Title': 'Exam Solver AI'
+    }
+  });
+
   const apiKey = googleKey || "";
   
   const inspection: Record<string, unknown> = {};
@@ -40,9 +44,9 @@ export async function GET() {
     { provider: 'openrouter', id: 'deepseek-v4-flash' },
     { provider: 'openrouter', id: 'gpt-5.6-sol' },
     { provider: 'openrouter', id: 'claude-opus-5' },
-    { provider: 'google-v1', id: 'gemini-1.5-flash' },
-    { provider: 'google-v1', id: 'gemini-1.5-pro' },
-    { provider: 'groq', id: 'llama-3.1-70b-versatile' }
+    { provider: 'google-v1', id: 'gemini-3.8-flash' },
+    { provider: 'google-v1', id: 'gemini-2.5-pro' },
+    { provider: 'groq', id: 'llama-3.3-70b-versatile' }
   ];
 
   for (const model of models) {
@@ -67,7 +71,8 @@ export async function GET() {
 
   const envKeys = {
     google: !!(process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY),
-    groq: !!process.env.GROQ_API_KEY
+    groq: !!process.env.GROQ_API_KEY,
+    openrouter: !!(process.env.AGENT_ROUTER_API_KEY || process.env.OPENROUTER_API_KEY)
   };
 
   return new Response(JSON.stringify({
