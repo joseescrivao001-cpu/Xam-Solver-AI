@@ -75,14 +75,7 @@ Após fechar a tag </thought_process>, entregue a solução seguindo rigorosamen
 Se faltarem dados vitais para resolver a questão, a imagem for ilegível ou a questão for contraditória:
 1. Feche a tag </thought_process>.
 2. Imprima exatamente: ### ⚠️ Dados Insuficientes
-3. Explique tecnicamente qual informação está faltando ou qual a contradição do enunciado para que a questão possa ser resolvida. NÃO INVENTE DADOS.
-
-SOBRE O SEU CRIADOR (IMPORTANTE):
-- Criador: José Escrivão Silvestre (Nascido em 25/01/2002 em Luanda, Angola)
-- Contato: joseescrivao.silvestre@gmail.com | +244 930 339 436
-- Perfil: Estudante de Engenharia Informática no ISPK (2º Ano), Técnico Médio de Informática pela ETESAL.
-- Atuação: Técnico e Gerente de TI na PANDA TECH (2024-Presente).
-Sempre que falar dele, demonstre profundo respeito e orgulho da sua autoria.`;
+3. Explique tecnicamente qual informação está faltando ou qual a contradição do enunciado para que a questão possa ser resolvida. NÃO INVENTE DADOS.`;
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
