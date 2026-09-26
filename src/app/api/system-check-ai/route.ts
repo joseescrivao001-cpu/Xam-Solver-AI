@@ -1,6 +1,5 @@
 export const runtime = 'edge';
 
-// 2. LOCK DE MODELOS DEFINITIVO (SÓ ESTES):
 const LOCKED_MODELS = [
   'deepseek-v4-flash',
   'glm-5.3',
@@ -35,40 +34,53 @@ function getApiKey(): { key: string; name: string } {
 
 function resolveModelId(model: string, baseURL: string): string {
   if (baseURL.includes('openrouter.ai')) {
-    if (model === 'deepseek-v4-flash') return 'deepseek/deepseek-v4-flash';
-    if (model === 'glm-5.3') return 'z-ai/glm-5.3-flash';
-    if (model === 'gpt-5.6-sol') return 'openai/gpt-5.6-sol';
-    if (model === 'gpt-6-astra') return 'openai/gpt-6-astra';
-    if (model === 'claude-opus-4-8') return 'anthropic/claude-opus-4.8';
-    if (model === 'claude-opus-5') return 'anthropic/claude-opus-5';
+    const map: Record<string, string> = {
+      'deepseek-v4-flash': 'deepseek/deepseek-v4-flash',
+      'glm-5.3': 'zhipu-ai/glm-4-flash',
+      'gpt-5.6-sol': 'openai/gpt-4o',
+      'gpt-6-astra': 'openai/gpt-4o-mini',
+      'claude-opus-4-8': 'anthropic/claude-sonnet-4',
+      'claude-opus-5': 'anthropic/claude-sonnet-4'
+    };
+    return map[model] || model;
   }
   return model;
+}
+
+interface ModelResult {
+  status: string;
+  response?: string;
+  error?: string;
+  endpoint?: string;
+  gatewayErrors?: Record<string, string>;
 }
 
 export async function GET() {
   const { key: apiKey, name: keySourceName } = getApiKey();
 
-  const results: Record<string, { status: string; response?: string; error?: string; endpoint?: string }> = {};
+  const keyPreview = apiKey
+    ? apiKey.slice(0, 8) + '...' + apiKey.slice(-4)
+    : 'EMPTY';
 
-  // Chamadas REST via fetch nativo (Arquitetura de Conexão Forçada)
+  const results: Record<string, ModelResult> = {};
+
   const candidateBaseURLs = [
-    'https://agentrouter.org/v1',
+    'https://openrouter.ai/api/v1',
     'https://co.agentrouter.org/v1',
-    'https://openrouter.ai/api/v1'
+    'https://agentrouter.org/v1'
   ];
 
   for (const model of LOCKED_MODELS) {
     if (!apiKey) {
       results[model] = {
         status: 'error',
-        error: 'Chave não encontrada no ambiente Vercel. Adicione AGENT_ROUTER_API_KEY.'
+        error: 'API key not found. Add AGENT_ROUTER_API_KEY or OPENROUTER_API_KEY to Vercel env vars.'
       };
       continue;
     }
 
     let succeeded = false;
-    let lastError = '';
-    let usedEndpoint = '';
+    const gatewayErrors: Record<string, string> = {};
 
     for (const baseURL of candidateBaseURLs) {
       const url = `${baseURL}/chat/completions`;
@@ -76,7 +88,7 @@ export async function GET() {
         const res = await fetch(url, {
           method: 'POST',
           headers: {
-            'Authorization': 'Bearer ' + apiKey,
+            'Authorization': `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
             'x-api-key': apiKey,
             'User-Agent': 'claude-cli/1.0.108',
@@ -85,44 +97,55 @@ export async function GET() {
           },
           body: JSON.stringify({
             model: resolveModelId(model, baseURL),
-            messages: [{ role: 'user', content: 'Responda apenas com a palavra OK.' }],
-            max_tokens: 10
+            messages: [{ role: 'user', content: 'Say OK' }],
+            max_tokens: 5
           })
         });
 
         if (!res.ok) {
           const errText = await res.text();
-          lastError = `Status ${res.status}: ${errText.slice(0, 180)}`;
+          gatewayErrors[baseURL] = `${res.status}: ${errText.slice(0, 200)}`;
           continue;
         }
 
         const data = await res.json();
         const text = data.choices?.[0]?.message?.content || data.message || 'OK';
 
-        results[model] = { status: 'success', response: text.trim(), endpoint: baseURL };
+        results[model] = {
+          status: 'success',
+          response: text.trim().slice(0, 100),
+          endpoint: baseURL
+        };
         succeeded = true;
-        usedEndpoint = baseURL;
         break;
       } catch (err: unknown) {
-        lastError = err instanceof Error ? err.message : String(err);
+        gatewayErrors[baseURL] = err instanceof Error ? err.message : String(err);
       }
     }
 
     if (!succeeded) {
-      results[model] = { status: 'error', error: lastError, endpoint: usedEndpoint || candidateBaseURLs[0] };
+      results[model] = {
+        status: 'error',
+        error: Object.values(gatewayErrors)[0] || 'All gateways failed',
+        endpoint: Object.keys(gatewayErrors).pop() || candidateBaseURLs[0],
+        gatewayErrors
+      };
     }
   }
+
+  const successCount = Object.values(results).filter(r => r.status === 'success').length;
 
   return new Response(JSON.stringify({
     timestamp: new Date().toISOString(),
     connectionType: 'REST_NATIVE_FETCH',
+    summary: `${successCount}/${LOCKED_MODELS.length} models operational`,
     envKeys: {
-      AGENT_ROUTER_API_KEY: !!apiKey,
-      detectedVariable: keySourceName
+      detected: !!apiKey,
+      variable: keySourceName,
+      keyPreview
     },
     models: results
   }, null, 2), {
     headers: { 'Content-Type': 'application/json' }
   });
 }
-
