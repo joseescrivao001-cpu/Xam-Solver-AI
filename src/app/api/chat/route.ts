@@ -1,4 +1,4 @@
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
@@ -237,7 +237,9 @@ export async function POST(req: Request) {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'cerebras-cloud-sdk/typescript/1.0.0'
       },
       body: JSON.stringify({
         model: cerebrasModel,

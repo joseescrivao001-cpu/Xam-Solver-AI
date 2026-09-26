@@ -1,4 +1,5 @@
-export const runtime = 'edge';
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 const LOCKED_MODELS = [
   'deepseek-v4-flash',
@@ -60,6 +61,33 @@ export async function GET() {
   const results: Record<string, ModelResult> = {};
   const baseURL = 'https://api.cerebras.ai/v1';
 
+  // Buscar modelos disponíveis no catálogo da Cerebras para diagnóstico completo
+  let availableCerebrasModels: string[] = [];
+  let catalogError = '';
+
+  if (apiKey) {
+    try {
+      const modelsRes = await fetch(`${baseURL}/models`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Accept': 'application/json',
+          'User-Agent': 'cerebras-cloud-sdk/typescript/1.0.0'
+        }
+      });
+      if (modelsRes.ok) {
+        const modelsData = await modelsRes.json();
+        availableCerebrasModels = Array.isArray(modelsData.data)
+          ? modelsData.data.map((m: { id: string }) => m.id)
+          : [];
+      } else {
+        catalogError = `Status ${modelsRes.status}: ${(await modelsRes.text()).slice(0, 150)}`;
+      }
+    } catch (e: unknown) {
+      catalogError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
   for (const model of LOCKED_MODELS) {
     const cerebrasModel = resolveModelId(model);
 
@@ -79,7 +107,9 @@ export async function GET() {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'cerebras-cloud-sdk/typescript/1.0.0'
         },
         body: JSON.stringify({
           model: cerebrasModel,
@@ -123,11 +153,17 @@ export async function GET() {
   return new Response(JSON.stringify({
     timestamp: new Date().toISOString(),
     connectionType: 'NATIVE_CEREBRAS_API',
+    runtime: 'nodejs',
     summary: `${successCount}/${LOCKED_MODELS.length} models operational`,
     envKeys: {
       detected: !!apiKey,
       variable: keySourceName,
       keyPreview
+    },
+    catalogInfo: {
+      availableModelsCount: availableCerebrasModels.length,
+      availableModels: availableCerebrasModels,
+      catalogError: catalogError || undefined
     },
     models: results
   }, null, 2), {
