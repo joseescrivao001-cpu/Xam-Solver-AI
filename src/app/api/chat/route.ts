@@ -10,16 +10,28 @@ function getApiKey(): string {
 }
 
 function resolveModelId(model: string): string {
-  // Cerebras only supports specific models like llama3.1-8b and llama3.1-70b
-  const map: Record<string, string> = {
-    'deepseek-v4-flash': 'llama3.1-8b',
-    'glm-5.3': 'llama3.1-70b',
-    'gpt-5.6-sol': 'llama3.1-70b',
-    'gpt-6-astra': 'llama3.1-8b',
-    'claude-opus-4-8': 'llama3.1-70b',
-    'claude-opus-5': 'llama3.1-70b'
-  };
-  return map[model] || 'llama3.1-70b';
+  // Modelos nativos Cerebras
+  if (model === 'gpt-oss-20b') return 'gpt-oss-20b';
+  if (model === 'gpt-oss-120b') return 'gpt-oss-120b';
+  if (model === 'qwen-3.8-27b') return 'qwen-3.8-27b';
+
+  // Tier Básico -> gpt-oss-20b
+  if (model === 'deepseek-v4-flash' || model.includes('flash') || model.includes('basic')) {
+    return 'gpt-oss-20b';
+  }
+
+  // Tier Elite / Visão -> qwen-3.8-27b
+  if (model === 'claude-opus-4-8' || model === 'claude-opus-5' || model.includes('opus') || model.includes('vision')) {
+    return 'qwen-3.8-27b';
+  }
+
+  // Tier Avançado -> gpt-oss-120b
+  if (model === 'glm-5.3' || model === 'gpt-5.6-sol' || model === 'gpt-6-astra' || model.includes('pro') || model.includes('ultra')) {
+    return 'gpt-oss-120b';
+  }
+
+  // Fallback automático para gpt-oss-120b
+  return 'gpt-oss-120b';
 }
 
 const SYSTEM_INSTRUCTION = `Você é o núcleo de processamento de elite do Exam Solver AI, a inteligência mais avançada em resolução de exames acadêmicos (STEM). Sua missão é decompor problemas complexos em passos atômicos e entregar respostas matematicamente perfeitas, visualmente limpas e pedagogicamente claras.

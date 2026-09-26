@@ -18,19 +18,33 @@ function getApiKey(): { key: string; name: string } {
 }
 
 function resolveModelId(model: string): string {
-  const map: Record<string, string> = {
-    'deepseek-v4-flash': 'llama3.1-8b',
-    'glm-5.3': 'llama3.1-70b',
-    'gpt-5.6-sol': 'llama3.1-70b',
-    'gpt-6-astra': 'llama3.1-8b',
-    'claude-opus-4-8': 'llama3.1-70b',
-    'claude-opus-5': 'llama3.1-70b'
-  };
-  return map[model] || 'llama3.1-70b';
+  // Modelos nativos Cerebras
+  if (model === 'gpt-oss-20b') return 'gpt-oss-20b';
+  if (model === 'gpt-oss-120b') return 'gpt-oss-120b';
+  if (model === 'qwen-3.8-27b') return 'qwen-3.8-27b';
+
+  // Tier Básico -> gpt-oss-20b
+  if (model === 'deepseek-v4-flash' || model.includes('flash') || model.includes('basic')) {
+    return 'gpt-oss-20b';
+  }
+
+  // Tier Elite / Visão -> qwen-3.8-27b
+  if (model === 'claude-opus-4-8' || model === 'claude-opus-5' || model.includes('opus') || model.includes('vision')) {
+    return 'qwen-3.8-27b';
+  }
+
+  // Tier Avançado -> gpt-oss-120b
+  if (model === 'glm-5.3' || model === 'gpt-5.6-sol' || model === 'gpt-6-astra' || model.includes('pro') || model.includes('ultra')) {
+    return 'gpt-oss-120b';
+  }
+
+  // Fallback automático para gpt-oss-120b
+  return 'gpt-oss-120b';
 }
 
 interface ModelResult {
   status: string;
+  cerebrasModel: string;
   response?: string;
   error?: string;
   endpoint?: string;
@@ -47,15 +61,17 @@ export async function GET() {
   const baseURL = 'https://api.cerebras.ai/v1';
 
   for (const model of LOCKED_MODELS) {
+    const cerebrasModel = resolveModelId(model);
+
     if (!apiKey) {
       results[model] = {
         status: 'error',
+        cerebrasModel,
         error: 'CEREBRAS_API_KEY not found in Vercel environment variables.'
       };
       continue;
     }
 
-    const cerebrasModel = resolveModelId(model);
     const url = `${baseURL}/chat/completions`;
 
     try {
@@ -76,6 +92,7 @@ export async function GET() {
         const errText = await res.text();
         results[model] = {
           status: 'error',
+          cerebrasModel,
           error: `${res.status}: ${errText.slice(0, 200)}`,
           endpoint: baseURL
         };
@@ -87,12 +104,14 @@ export async function GET() {
 
       results[model] = {
         status: 'success',
+        cerebrasModel,
         response: text.trim().slice(0, 100),
         endpoint: baseURL
       };
     } catch (err: unknown) {
       results[model] = {
         status: 'error',
+        cerebrasModel,
         error: err instanceof Error ? err.message : String(err),
         endpoint: baseURL
       };
