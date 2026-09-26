@@ -9,31 +9,29 @@ function getApiKey(): string {
   return key && typeof key === 'string' ? key.trim() : '';
 }
 
+// --- CONFIGURAÇÃO DE MODELOS ---
 function resolveModelId(model: string): string {
-  // 1. Prioridade Máxima: Se o modelo já for um modelo nativo Cerebras, use-o
+  // 1. Prioridade Máxima: Modelos nativos Cerebras
   if (model === 'gpt-oss-20b') return 'gpt-oss-20b';
   if (model === 'gpt-oss-120b') return 'gpt-oss-120b';
   if (model === 'qwen-3.8-27b') return 'qwen-3.8-27b';
 
-  // 2. Mapeamento de Tiers (Conversão de nomes antigos para Cerebras)
-  
-  // Tier Elite / Visão -> qwen-3.8-27b
+  // 2. Tier Elite / Visão -> qwen-3.8-27b
   if (model.includes('opus') || model.includes('vision') || model === 'claude-opus-4-8' || model === 'claude-opus-5') {
     return 'qwen-3.8-27b';
   }
 
-  // Tier Básico -> gpt-oss-20b
+  // 3. Tier Básico -> gpt-oss-20b
   if (model.includes('flash') || model.includes('basic') || model === 'deepseek-v4-flash') {
     return 'gpt-oss-20b';
   }
 
-  // Tier Avançado -> gpt-oss-120b
+  // 4. Tier Avançado -> gpt-oss-120b
   if (model.includes('pro') || model.includes('ultra') || model === 'glm-5.3' || model === 'gpt-5.6-sol' || model === 'gpt-6-astra') {
     return 'gpt-oss-120b';
   }
 
-  // Fallback Final: Se não for nenhum dos acima, usa o modelo mais potente
-  return 'gpt-oss-120b';
+  return 'gpt-oss-120b'; // Fallback final
 }
 
 const SYSTEM_INSTRUCTION = `Você é o núcleo de processamento de elite do Exam Solver AI, a inteligência mais avançada em resolução de exames acadêmicos (STEM). Sua missão é decompor problemas complexos em passos atômicos e entregar respostas matematicamente perfeitas, visualmente limpas e pedagogicamente claras.
