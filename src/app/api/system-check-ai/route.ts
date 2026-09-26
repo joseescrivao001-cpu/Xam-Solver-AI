@@ -1,4 +1,4 @@
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
 const LOCKED_MODELS = [
@@ -19,27 +19,29 @@ function getApiKey(): { key: string; name: string } {
 }
 
 function resolveModelId(model: string): string {
-  // Modelos nativos Cerebras
+  // 1. Prioridade Máxima: Se o modelo já for um modelo nativo Cerebras, use-o
   if (model === 'gpt-oss-20b') return 'gpt-oss-20b';
   if (model === 'gpt-oss-120b') return 'gpt-oss-120b';
   if (model === 'qwen-3.8-27b') return 'qwen-3.8-27b';
 
-  // Tier Básico -> gpt-oss-20b
-  if (model === 'deepseek-v4-flash' || model.includes('flash') || model.includes('basic')) {
-    return 'gpt-oss-20b';
-  }
-
+  // 2. Mapeamento de Tiers (Conversão de nomes antigos para Cerebras)
+  
   // Tier Elite / Visão -> qwen-3.8-27b
-  if (model === 'claude-opus-4-8' || model === 'claude-opus-5' || model.includes('opus') || model.includes('vision')) {
+  if (model.includes('opus') || model.includes('vision') || model === 'claude-opus-4-8' || model === 'claude-opus-5') {
     return 'qwen-3.8-27b';
   }
 
+  // Tier Básico -> gpt-oss-20b
+  if (model.includes('flash') || model.includes('basic') || model === 'deepseek-v4-flash') {
+    return 'gpt-oss-20b';
+  }
+
   // Tier Avançado -> gpt-oss-120b
-  if (model === 'glm-5.3' || model === 'gpt-5.6-sol' || model === 'gpt-6-astra' || model.includes('pro') || model.includes('ultra')) {
+  if (model.includes('pro') || model.includes('ultra') || model === 'glm-5.3' || model === 'gpt-5.6-sol' || model === 'gpt-6-astra') {
     return 'gpt-oss-120b';
   }
 
-  // Fallback automático para gpt-oss-120b
+  // Fallback Final: Se não for nenhum dos acima, usa o modelo mais potente
   return 'gpt-oss-120b';
 }
 
