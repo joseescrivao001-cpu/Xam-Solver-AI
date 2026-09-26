@@ -5,41 +5,22 @@ export const dynamic = 'force-dynamic';
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 
 function getApiKey(): string {
-  const names = [
-    'AGENT_ROUTER_API_KEY',
-    'AGENTROUTER_API_KEY',
-    'OPENROUTER_API_KEY',
-    'OPEN_ROUTER_API_KEY',
-    'AGENT_ROUTER_KEY',
-    'AGENTROUTER_KEY',
-    'OPENROUTER_KEY',
-    'ROUTER_API_KEY',
-    'NEXT_PUBLIC_AGENT_ROUTER_API_KEY',
-    'NEXT_PUBLIC_OPENROUTER_API_KEY'
-  ];
-  for (const name of names) {
-    const val = process.env[name];
-    if (val && typeof val === 'string' && val.trim().length > 0) return val.trim();
-  }
-  for (const val of Object.values(process.env)) {
-    if (typeof val === 'string' && (val.trim().startsWith('sk-') || val.trim().startsWith('ar-'))) return val.trim();
-  }
-  return '';
+  const key = process.env['CEREBRAS_API_KEY'];
+  return key && typeof key === 'string' ? key.trim() : '';
 }
 
-function resolveModelId(model: string, baseURL: string): string {
-  if (baseURL.includes('openrouter.ai')) {
-    if (model === 'deepseek-v4-flash') return 'deepseek/deepseek-v4-flash';
-    if (model === 'glm-5.3') return 'z-ai/glm-5.3-flash';
-    if (model === 'gpt-5.6-sol') return 'openai/gpt-5.6-sol';
-    if (model === 'gpt-6-astra') return 'openai/gpt-6-astra';
-    if (model === 'claude-opus-4-8') return 'anthropic/claude-opus-4.8';
-    if (model === 'claude-opus-5') return 'anthropic/claude-opus-5';
-  }
-  return model;
+function resolveModelId(model: string): string {
+  // Cerebras only supports specific models like llama3.1-8b and llama3.1-70b
+  const map: Record<string, string> = {
+    'deepseek-v4-flash': 'llama3.1-8b',
+    'glm-5.3': 'llama3.1-70b',
+    'gpt-5.6-sol': 'llama3.1-70b',
+    'gpt-6-astra': 'llama3.1-8b',
+    'claude-opus-4-8': 'llama3.1-70b',
+    'claude-opus-5': 'llama3.1-70b'
+  };
+  return map[model] || 'llama3.1-70b';
 }
-
-
 
 const SYSTEM_INSTRUCTION = `Você é o núcleo de processamento de elite do Exam Solver AI, a inteligência mais avançada em resolução de exames acadêmicos (STEM). Sua missão é decompor problemas complexos em passos atômicos e entregar respostas matematicamente perfeitas, visualmente limpas e pedagogicamente claras.
 
@@ -89,6 +70,10 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 export async function POST(req: Request) {
   try {
     const apiKey = getApiKey();
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: "API Key (CEREBRAS_API_KEY) não configurada." }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    }
+
     const supabase = createClient();
     const serviceClient = createServiceClient();
     const db = serviceClient || supabase;
@@ -234,59 +219,32 @@ export async function POST(req: Request) {
       });
     }
 
-    // Execução Determinística com Fallback automático para deepseek-v4-flash
-    const candidateBaseURLs = [
-      'https://agentrouter.org/v1',
-      'https://co.agentrouter.org/v1',
-      'https://openrouter.ai/api/v1'
-    ];
+    const cerebrasModel = resolveModelId(targetModel);
+    
+    const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: cerebrasModel,
+        messages: openAiMessages,
+        stream: true,
+        temperature: 0.3
+      })
+    });
 
-    const modelsToAttempt = [targetModel];
-    if (targetModel !== 'deepseek-v4-flash') {
-      modelsToAttempt.push('deepseek-v4-flash');
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Cerebras API Error:", errText);
+      return new Response(JSON.stringify({ error: "⚠️ Erro na Cerebras AI. Tente novamente." }), { status: 503, headers: { 'Content-Type': 'application/json' } });
     }
 
-    let streamResponse: Response | null = null;
-    let actualModelUsed = targetModel;
-
-    for (const modelToTry of modelsToAttempt) {
-      for (const baseURL of candidateBaseURLs) {
-        try {
-          const res = await fetch(`${baseURL}/chat/completions`, {
-            method: 'POST',
-            headers: {
-              'Authorization': 'Bearer ' + apiKey,
-              'Content-Type': 'application/json',
-              'x-api-key': apiKey,
-              'User-Agent': 'claude-cli/1.0.108',
-              'HTTP-Referer': 'https://xam-solver-ai.vercel.app',
-              'X-Title': 'Exam Solver AI'
-            },
-            body: JSON.stringify({
-              model: resolveModelId(modelToTry, baseURL),
-              messages: openAiMessages,
-              stream: true,
-              temperature: 0.3
-            })
-          });
-
-          if (res.ok && res.body) {
-            streamResponse = res;
-            actualModelUsed = modelToTry;
-            break;
-          }
-        } catch {
-          // Continua para o próximo endpoint/modelo
-        }
-      }
-      if (streamResponse) break;
+    if (!res.body) {
+      return new Response(JSON.stringify({ error: "⚠️ Corpo de resposta vazio da Cerebras AI." }), { status: 503, headers: { 'Content-Type': 'application/json' } });
     }
 
-    if (!streamResponse || !streamResponse.body) {
-      return new Response(JSON.stringify({ error: "⚠️ Servidores de IA temporariamente indisponíveis. Tente novamente." }), { status: 503, headers: { 'Content-Type': 'application/json' } });
-    }
-
-    // Conversão do SSE (Server-Sent Events) para Text Stream consumível pelo frontend
     let fullTextAccumulated = "";
     let sseBuffer = "";
 
@@ -319,7 +277,7 @@ export async function POST(req: Request) {
             conversation_id: conversationId,
             role: 'ai',
             content: fullTextAccumulated,
-            model_used: actualModelUsed
+            model_used: targetModel
           });
 
           if (text && text.trim()) {
@@ -341,13 +299,13 @@ export async function POST(req: Request) {
       }
     });
 
-    const outputStream = streamResponse.body.pipeThrough(transformStream);
+    const outputStream = res.body.pipeThrough(transformStream);
 
     return new Response(outputStream, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'X-Conversation-Id': conversationId || 'guest',
-        'X-Actual-Model': actualModelUsed
+        'X-Actual-Model': targetModel
       }
     });
 
