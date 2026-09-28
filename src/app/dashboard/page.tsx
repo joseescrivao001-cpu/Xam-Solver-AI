@@ -2477,7 +2477,7 @@ export default function ExamSolverGrand() {
                           <BrainCircuit className="w-4 h-4 text-white" />
                         </div>
                       )}
-                      <div className={`w-full max-w-[85%] md:max-w-[75%] ${msg.role === 'user' ? 'bg-zinc-100 dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 px-5 py-3.5 rounded-3xl rounded-tr-sm shadow-sm' : 'text-zinc-800 dark:text-zinc-200 px-1 py-1'}`}>
+                      <div className={`w-fit max-w-[85%] md:max-w-[75%] ${msg.role === 'user' ? 'bg-zinc-100 dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 px-5 py-3.5 rounded-3xl rounded-tr-sm shadow-sm' : 'text-zinc-800 dark:text-zinc-200 px-1 py-1 w-full'}`}>
                         {msg.image_url && (
                           <div className="mb-3 cursor-pointer group" onClick={() => setSelectedGalleryImage({ id: msg.id, url: msg.image_url!, created_at: '', conversation_id: currentConvId || '' })}>
                             <Image src={msg.image_url!} alt="Uploaded" width={400} height={400} unoptimized className="max-w-sm w-full h-auto rounded-2xl shadow-sm border border-zinc-200 dark:border-zinc-700 group-hover:opacity-95 transition" />
