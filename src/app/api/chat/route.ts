@@ -13,16 +13,15 @@ function resolveModelId(model: string): string {
   // 1. Modelos nativos Cerebras (Prioridade)
   if (model === 'gpt-oss-120b') return 'gpt-oss-120b';
   if (model === 'qwen-3.8-27b') return 'qwen-3.8-27b';
-  if (model === 'llama3.1-8b') return 'llama3.1-8b';
 
   // 2. Tier Elite / Visão -> qwen-3.8-27b
   if (model.includes('opus') || model.includes('vision') || model === 'claude-opus-4-8' || model === 'claude-opus-5') {
     return 'qwen-3.8-27b';
   }
 
-  // 3. Tier Básico -> llama3.1-8b (CORRIGIDO)
+  // 3. Tier Básico -> gpt-oss-120b
   if (model.includes('flash') || model.includes('basic') || model === 'deepseek-v4-flash') {
-    return 'llama3.1-8b';
+    return 'gpt-oss-120b';
   }
 
   // 4. Tier Avançado -> gpt-oss-120b
