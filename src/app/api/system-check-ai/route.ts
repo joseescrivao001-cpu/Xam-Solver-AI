@@ -11,7 +11,6 @@ const LOCKED_MODELS = [
   'claude-opus-5'
 ];
 
-// 1. Função de Autenticação Simplificada
 function getApiKey(): { key: string; name: string } {
   const key = process.env.CEREBRAS_API_KEY;
   if (key && typeof key === 'string' && key.trim()) {
@@ -20,32 +19,30 @@ function getApiKey(): { key: string; name: string } {
   return { key: '', name: 'NOT_SET' };
 }
 
-// 2. Função de Roteamento de Modelos (Cerebras Native)
 function resolveModelId(model: string): string {
-  // Prioridade Máxima: Modelos nativos Cerebras
-  if (model === 'gpt-oss-20b') return 'gpt-oss-20b';
+  // 1. Modelos nativos Cerebras (Prioridade)
   if (model === 'gpt-oss-120b') return 'gpt-oss-120b';
   if (model === 'qwen-3.8-27b') return 'qwen-3.8-27b';
+  if (model === 'llama3.1-8b') return 'llama3.1-8b';
 
-  // Tier Elite / Visão -> qwen-3.8-27b
+  // 2. Tier Elite / Visão -> qwen-3.8-27b
   if (model.includes('opus') || model.includes('vision') || model === 'claude-opus-4-8' || model === 'claude-opus-5') {
     return 'qwen-3.8-27b';
   }
 
-  // Tier Básico -> gpt-oss-20b
+  // 3. Tier Básico -> llama3.1-8b (CORRIGIDO)
   if (model.includes('flash') || model.includes('basic') || model === 'deepseek-v4-flash') {
-    return 'gpt-oss-20b';
+    return 'llama3.1-8b';
   }
 
-  // Tier Avançado -> gpt-oss-120b
+  // 4. Tier Avançado -> gpt-oss-120b
   if (model.includes('pro') || model.includes('ultra') || model === 'glm-5.3' || model === 'gpt-5.6-sol' || model === 'gpt-6-astra') {
     return 'gpt-oss-120b';
   }
 
-  return 'gpt-oss-120b'; // Fallback final seguro
+  return 'gpt-oss-120b'; // Fallback final
 }
 
-// 3. Diagnóstico
 interface ModelResult {
   status: string;
   cerebrasModel: string;

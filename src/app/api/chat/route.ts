@@ -4,38 +4,35 @@ export const dynamic = 'force-dynamic';
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 
-// 1. Função de Autenticação Simplificada
 function getApiKey(): string {
   const key = process.env.CEREBRAS_API_KEY;
   return key && typeof key === 'string' ? key.trim() : '';
 }
 
-// 2. Função de Roteamento de Modelos (Cerebras Native)
 function resolveModelId(model: string): string {
-  // Prioridade Máxima: Modelos nativos Cerebras
-  if (model === 'gpt-oss-20b') return 'gpt-oss-20b';
+  // 1. Modelos nativos Cerebras (Prioridade)
   if (model === 'gpt-oss-120b') return 'gpt-oss-120b';
   if (model === 'qwen-3.8-27b') return 'qwen-3.8-27b';
+  if (model === 'llama3.1-8b') return 'llama3.1-8b';
 
-  // Tier Elite / Visão -> qwen-3.8-27b
+  // 2. Tier Elite / Visão -> qwen-3.8-27b
   if (model.includes('opus') || model.includes('vision') || model === 'claude-opus-4-8' || model === 'claude-opus-5') {
     return 'qwen-3.8-27b';
   }
 
-  // Tier Básico -> gpt-oss-20b
+  // 3. Tier Básico -> llama3.1-8b (CORRIGIDO)
   if (model.includes('flash') || model.includes('basic') || model === 'deepseek-v4-flash') {
-    return 'gpt-oss-20b';
+    return 'llama3.1-8b';
   }
 
-  // Tier Avançado -> gpt-oss-120b
+  // 4. Tier Avançado -> gpt-oss-120b
   if (model.includes('pro') || model.includes('ultra') || model === 'glm-5.3' || model === 'gpt-5.6-sol' || model === 'gpt-6-astra') {
     return 'gpt-oss-120b';
   }
 
-  return 'gpt-oss-120b'; // Fallback final seguro
+  return 'gpt-oss-120b'; // Fallback final
 }
 
-// 3. System Prompt (God Mode)
 const SYSTEM_INSTRUCTION = `Você é o núcleo de processamento de elite do Exam Solver AI, a inteligência mais avançada em resolução de exames acadêmicos (STEM). Sua missão é decompor problemas complexos em passos atômicos e entregar respostas matematicamente perfeitas, visualmente limpas e pedagogicamente claras.
 
 ### 🧠 PROTOCOLO DE COGNIÇÃO (OBRIGATÓRIO)
@@ -72,7 +69,6 @@ Se faltarem dados vitais para resolver a questão, a imagem for ilegível ou a q
 2. Imprima exatamente: ### ⚠️ Dados Insuficientes
 3. Explique tecnicamente qual informação está faltando ou qual a contradição do enunciado para que a questão possa ser resolvida. NÃO INVENTE DADOS.`;
 
-// 4. Utilitário de conversão de imagem
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = "";
@@ -82,7 +78,6 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-// 5. Handler Principal
 export async function POST(req: Request) {
   try {
     const apiKey = getApiKey();
@@ -235,7 +230,7 @@ export async function POST(req: Request) {
     }
 
     const cerebrasModel = resolveModelId(targetModel);
-    
+
     const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
       method: 'POST',
       headers: {
