@@ -1369,8 +1369,9 @@ export default function ExamSolverGrand() {
     } finally {
       setIsStreaming(false);
       if (activeConvId && activeConvId !== "guest") {
-        const cid = activeConvId;
-        setTimeout(() => loadConversation(cid), 2000);
+        // Removido o loadConversation aqui para IMPEDIR que a UI apague a resposta 
+        // caso o Supabase demore a gravar a mensagem no backend. 
+        // O estado local (messages) já está perfeitamente sincronizado e atualizado!
         fetch("/api/chat/conversations")
           .then(r => r.json())
           .then(d => {
