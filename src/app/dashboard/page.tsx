@@ -14,11 +14,10 @@ import {
   RefreshCw, Key, Activity, Upload, Loader2, Crown, Zap,
   ArrowLeft, FileText, CheckCircle2, Download, Eye
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
+import { SafeMarkdown } from "@/components/chat/safe-markdown";
+import { SolutionProcess } from "@/components/chat/solution-process";
+import { useChatStore } from "@/lib/store/chat-store";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -96,7 +95,7 @@ export default function ExamSolverGrand() {
   // Data State
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConvId, setCurrentConvId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const { messages, setMessages } = useChatStore();
   const [credits, setCredits] = useState<number>(0);
   const [userPlan, setUserPlan] = useState<'free' | 'pro' | 'ultra' | 'premium' | null>(null);
   const [isProfileLoaded, setIsProfileLoaded] = useState(false);
@@ -2498,24 +2497,8 @@ export default function ExamSolverGrand() {
                             <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '0.4s' }} />
                           </div>
                         ) : (
-                          <div className={`prose dark:prose-invert prose-sm max-w-none font-serif ${msg.role === 'ai' ? 'leading-relaxed' : ''}`}>
-                            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                              {(() => {
-                                if (!msg.content) return "";
-                                let c = msg.content;
-                                c = c.replace(/\\\[/g, "$$").replace(/\\\]/g, "$$").replace(/\\\(/g, "$").replace(/\\\)/g, "$");
-                                if (c.includes("</thought_process>")) {
-                                  const parts = c.split("</thought_process>");
-                                  const textAfter = parts[1]?.trim();
-                                  return textAfter ? textAfter : c.replace(/<\/?thought_process>/g, "");
-                                }
-                                if (c.includes("<thought_process>")) {
-                                  return c.replace(/<\/?thought_process>/g, "");
-                                }
-                                return c;
-                              })()}
-                            </ReactMarkdown>
-                          </div>
+                          <div className="w-full flex flex-col gap-2"><SolutionProcess thoughts={msg.thought_process || ""} />
+                            <SafeMarkdown content={msg.content} isAiRole={msg.role === 'ai'} /></div>
                         )}
                       </div>
                     </motion.div>
