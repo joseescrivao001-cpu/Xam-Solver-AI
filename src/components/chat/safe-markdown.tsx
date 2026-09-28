@@ -32,9 +32,10 @@ function sanitizeIncompleteMath(content: string): string {
 interface SafeMarkdownProps {
   content: string;
   isAiRole?: boolean;
+  isStreaming?: boolean;
 }
 
-export function SafeMarkdown({ content, isAiRole = false }: SafeMarkdownProps) {
+export function SafeMarkdown({ content, isAiRole = false, isStreaming = false }: SafeMarkdownProps) {
   const safeContent = sanitizeIncompleteMath(content);
 
   return (
@@ -46,6 +47,7 @@ export function SafeMarkdown({ content, isAiRole = false }: SafeMarkdownProps) {
         >
           {safeContent}
         </ReactMarkdown>
+        {isStreaming && <span className="blinking-cursor" />}
       </div>
     </ErrorBoundary>
   );

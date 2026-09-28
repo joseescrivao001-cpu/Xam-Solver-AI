@@ -2471,34 +2471,37 @@ export default function ExamSolverGrand() {
               ) : (
                 <div className="max-w-4xl mx-auto w-full space-y-8 pb-44 pt-6">
                   {messages.map((msg, idx) => (
-                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 260, damping: 20 }} key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                       {msg.role === 'ai' && (
                         <div className="w-8 h-8 shrink-0 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md mt-1">
                           <BrainCircuit className="w-4 h-4 text-white" />
                         </div>
                       )}
-                      <div className={`max-w-[85%] md:max-w-[75%] ${msg.role === 'user' ? 'bg-white/70 dark:bg-zinc-900/70 backdrop-blur-md border border-zinc-200/60 dark:border-zinc-800/60 text-zinc-900 dark:text-zinc-100 px-5 py-3.5 rounded-2xl rounded-tr-sm shadow-sm' : 'text-zinc-800 dark:text-zinc-200 px-2 py-1'}`}>
+                      <div className={`w-full max-w-[85%] md:max-w-[75%] ${msg.role === 'user' ? 'bg-zinc-100 dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 px-5 py-3.5 rounded-3xl rounded-tr-sm shadow-sm' : 'text-zinc-800 dark:text-zinc-200 px-1 py-1'}`}>
                         {msg.image_url && (
                           <div className="mb-3 cursor-pointer group" onClick={() => setSelectedGalleryImage({ id: msg.id, url: msg.image_url!, created_at: '', conversation_id: currentConvId || '' })}>
                             <Image src={msg.image_url!} alt="Uploaded" width={400} height={400} unoptimized className="max-w-sm w-full h-auto rounded-2xl shadow-sm border border-zinc-200 dark:border-zinc-700 group-hover:opacity-95 transition" />
                           </div>
                         )}
                         {msg.is_thinking ? (
-                          <div className="flex items-center gap-3 bg-white/60 dark:bg-zinc-900/60 backdrop-blur-xl border border-zinc-200 dark:border-zinc-800 px-4 py-3 rounded-2xl shadow-sm my-2 max-w-sm">
-                            <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
-                            <span className="text-sm font-medium bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400 bg-clip-text text-transparent">
-                              Analisando problema em profundidade...
-                            </span>
+                          <div className="flex flex-col gap-3 my-2 max-w-lg w-full">
+                            <div className="flex items-center gap-3 mb-1">
+                              <Loader2 className="w-4 h-4 text-zinc-400 dark:text-zinc-500 animate-spin" />
+                              <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 tracking-wide uppercase">
+                                Processando Cognição...
+                              </span>
+                            </div>
+                            <div className="h-4 w-3/4 rounded-md skeleton-shimmer" />
+                            <div className="h-4 w-full rounded-md skeleton-shimmer" />
+                            <div className="h-4 w-5/6 rounded-md skeleton-shimmer" />
                           </div>
                         ) : msg.content === "" && isStreaming && idx === messages.length - 1 ? (
-                          <div className="flex items-center gap-2 text-indigo-500 text-sm py-2">
-                            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" />
-                            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '0.2s' }} />
-                            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '0.4s' }} />
+                          <div className="flex items-center gap-2 text-indigo-500 py-3">
+                            <span className="w-2 h-4 rounded-sm bg-indigo-500/50 animate-pulse" />
                           </div>
                         ) : (
                           <div className="w-full flex flex-col gap-2"><SolutionProcess thoughts={msg.thought_process || ""} />
-                            <SafeMarkdown content={msg.content} isAiRole={msg.role === 'ai'} /></div>
+                            <SafeMarkdown content={msg.content} isAiRole={msg.role === 'ai'} isStreaming={isStreaming && idx === messages.length - 1 && msg.role === 'ai'} /></div>
                         )}
                       </div>
                     </motion.div>

@@ -79,3 +79,67 @@
     @apply font-sans;
   }
 }
+
+@layer utilities {
+  .math-renderer .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 0.5rem;
+    scrollbar-width: thin;
+  }
+  
+  .math-renderer .katex-display::-webkit-scrollbar {
+    height: 6px;
+  }
+  
+  .math-renderer .katex-display::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .math-renderer .katex-display::-webkit-scrollbar-thumb {
+    @apply bg-zinc-300 dark:bg-zinc-700 rounded-full;
+  }
+  
+  .skeleton-shimmer {
+    background: linear-gradient(90deg, theme("colors.zinc.200") 0%, theme("colors.zinc.100") 50%, theme("colors.zinc.200") 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+  
+  .dark .skeleton-shimmer {
+    background: linear-gradient(90deg, theme("colors.zinc.800") 0%, theme("colors.zinc.700") 50%, theme("colors.zinc.800") 100%);
+    background-size: 200% 100%;
+  }
+  
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  
+  .blinking-cursor {
+    display: inline-block;
+    width: 6px;
+    height: 1.2em;
+    background-color: theme("colors.indigo.500");
+    vertical-align: middle;
+    animation: blink 1s step-end infinite;
+    margin-left: 4px;
+    border-radius: 2px;
+  }
+  
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+}
+
+
+@layer base {
+  button:focus-visible, 
+  a:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible {
+    @apply outline-none ring-2 ring-indigo-500/50 ring-offset-2 ring-offset-background;
+  }
+}
+
