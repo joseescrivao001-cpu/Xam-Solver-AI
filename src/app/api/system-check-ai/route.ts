@@ -1,4 +1,5 @@
 export const runtime = 'edge';
+export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 const LOCKED_MODELS = [
@@ -10,39 +11,41 @@ const LOCKED_MODELS = [
   'claude-opus-5'
 ];
 
+// 1. Função de Autenticação Simplificada
 function getApiKey(): { key: string; name: string } {
-  const key = process.env['CEREBRAS_API_KEY'];
+  const key = process.env.CEREBRAS_API_KEY;
   if (key && typeof key === 'string' && key.trim()) {
     return { key: key.trim(), name: 'CEREBRAS_API_KEY' };
   }
   return { key: '', name: 'NOT_SET' };
 }
 
-// --- CONFIGURAÇÃO DE MODELOS ---
+// 2. Função de Roteamento de Modelos (Cerebras Native)
 function resolveModelId(model: string): string {
-  // 1. Prioridade Máxima: Modelos nativos Cerebras
+  // Prioridade Máxima: Modelos nativos Cerebras
   if (model === 'gpt-oss-20b') return 'gpt-oss-20b';
   if (model === 'gpt-oss-120b') return 'gpt-oss-120b';
   if (model === 'qwen-3.8-27b') return 'qwen-3.8-27b';
 
-  // 2. Tier Elite / Visão -> qwen-3.8-27b
+  // Tier Elite / Visão -> qwen-3.8-27b
   if (model.includes('opus') || model.includes('vision') || model === 'claude-opus-4-8' || model === 'claude-opus-5') {
     return 'qwen-3.8-27b';
   }
 
-  // 3. Tier Básico -> gpt-oss-20b
+  // Tier Básico -> gpt-oss-20b
   if (model.includes('flash') || model.includes('basic') || model === 'deepseek-v4-flash') {
     return 'gpt-oss-20b';
   }
 
-  // 4. Tier Avançado -> gpt-oss-120b
+  // Tier Avançado -> gpt-oss-120b
   if (model.includes('pro') || model.includes('ultra') || model === 'glm-5.3' || model === 'gpt-5.6-sol' || model === 'gpt-6-astra') {
     return 'gpt-oss-120b';
   }
 
-  return 'gpt-oss-120b'; // Fallback final
+  return 'gpt-oss-120b'; // Fallback final seguro
 }
 
+// 3. Diagnóstico
 interface ModelResult {
   status: string;
   cerebrasModel: string;
@@ -60,33 +63,6 @@ export async function GET() {
 
   const results: Record<string, ModelResult> = {};
   const baseURL = 'https://api.cerebras.ai/v1';
-
-  // Buscar modelos disponíveis no catálogo da Cerebras para diagnóstico completo
-  let availableCerebrasModels: string[] = [];
-  let catalogError = '';
-
-  if (apiKey) {
-    try {
-      const modelsRes = await fetch(`${baseURL}/models`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Accept': 'application/json',
-          'User-Agent': 'cerebras-cloud-sdk/typescript/1.0.0'
-        }
-      });
-      if (modelsRes.ok) {
-        const modelsData = await modelsRes.json();
-        availableCerebrasModels = Array.isArray(modelsData.data)
-          ? modelsData.data.map((m: { id: string }) => m.id)
-          : [];
-      } else {
-        catalogError = `Status ${modelsRes.status}: ${(await modelsRes.text()).slice(0, 150)}`;
-      }
-    } catch (e: unknown) {
-      catalogError = e instanceof Error ? e.message : String(e);
-    }
-  }
 
   for (const model of LOCKED_MODELS) {
     const cerebrasModel = resolveModelId(model);
@@ -153,17 +129,11 @@ export async function GET() {
   return new Response(JSON.stringify({
     timestamp: new Date().toISOString(),
     connectionType: 'NATIVE_CEREBRAS_API',
-    runtime: 'nodejs',
     summary: `${successCount}/${LOCKED_MODELS.length} models operational`,
     envKeys: {
       detected: !!apiKey,
       variable: keySourceName,
       keyPreview
-    },
-    catalogInfo: {
-      availableModelsCount: availableCerebrasModels.length,
-      availableModels: availableCerebrasModels,
-      catalogError: catalogError || undefined
     },
     models: results
   }, null, 2), {

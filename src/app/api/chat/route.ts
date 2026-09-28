@@ -4,36 +4,38 @@ export const dynamic = 'force-dynamic';
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 
+// 1. Função de Autenticação Simplificada
 function getApiKey(): string {
-  const key = process.env['CEREBRAS_API_KEY'];
+  const key = process.env.CEREBRAS_API_KEY;
   return key && typeof key === 'string' ? key.trim() : '';
 }
 
-// --- CONFIGURAÇÃO DE MODELOS ---
+// 2. Função de Roteamento de Modelos (Cerebras Native)
 function resolveModelId(model: string): string {
-  // 1. Prioridade Máxima: Modelos nativos Cerebras
+  // Prioridade Máxima: Modelos nativos Cerebras
   if (model === 'gpt-oss-20b') return 'gpt-oss-20b';
   if (model === 'gpt-oss-120b') return 'gpt-oss-120b';
   if (model === 'qwen-3.8-27b') return 'qwen-3.8-27b';
 
-  // 2. Tier Elite / Visão -> qwen-3.8-27b
+  // Tier Elite / Visão -> qwen-3.8-27b
   if (model.includes('opus') || model.includes('vision') || model === 'claude-opus-4-8' || model === 'claude-opus-5') {
     return 'qwen-3.8-27b';
   }
 
-  // 3. Tier Básico -> gpt-oss-20b
+  // Tier Básico -> gpt-oss-20b
   if (model.includes('flash') || model.includes('basic') || model === 'deepseek-v4-flash') {
     return 'gpt-oss-20b';
   }
 
-  // 4. Tier Avançado -> gpt-oss-120b
+  // Tier Avançado -> gpt-oss-120b
   if (model.includes('pro') || model.includes('ultra') || model === 'glm-5.3' || model === 'gpt-5.6-sol' || model === 'gpt-6-astra') {
     return 'gpt-oss-120b';
   }
 
-  return 'gpt-oss-120b'; // Fallback final
+  return 'gpt-oss-120b'; // Fallback final seguro
 }
 
+// 3. System Prompt (God Mode)
 const SYSTEM_INSTRUCTION = `Você é o núcleo de processamento de elite do Exam Solver AI, a inteligência mais avançada em resolução de exames acadêmicos (STEM). Sua missão é decompor problemas complexos em passos atômicos e entregar respostas matematicamente perfeitas, visualmente limpas e pedagogicamente claras.
 
 ### 🧠 PROTOCOLO DE COGNIÇÃO (OBRIGATÓRIO)
@@ -70,6 +72,7 @@ Se faltarem dados vitais para resolver a questão, a imagem for ilegível ou a q
 2. Imprima exatamente: ### ⚠️ Dados Insuficientes
 3. Explique tecnicamente qual informação está faltando ou qual a contradição do enunciado para que a questão possa ser resolvida. NÃO INVENTE DADOS.`;
 
+// 4. Utilitário de conversão de imagem
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = "";
@@ -79,6 +82,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
+// 5. Handler Principal
 export async function POST(req: Request) {
   try {
     const apiKey = getApiKey();
@@ -112,7 +116,7 @@ export async function POST(req: Request) {
     let conversationId = formData.get("conversation_id") as string;
     const text = formData.get("text") as string;
     const file = formData.get("file") as File | null;
-    const requestedModel = (formData.get("model") as string) || "gemini-1.5-flash";
+    const requestedModel = (formData.get("model") as string) || "gpt-oss-120b";
     const notebookId = (formData.get("notebook_id") as string) || null;
 
     if (!isGuest && user && (!conversationId || conversationId === "guest")) {
@@ -136,7 +140,6 @@ export async function POST(req: Request) {
     const isUltra = userPlan === 'ultra' || userPlan === 'premium';
     const isPro = isUltra || userPlan === 'pro';
 
-    // Trava determinística de planos
     const ultraModels = ['gpt-6-astra', 'claude-opus-4-8', 'claude-opus-5'];
     const proModels = ['glm-5.3', 'gpt-5.6-sol'];
 
@@ -319,7 +322,7 @@ export async function POST(req: Request) {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'X-Conversation-Id': conversationId || 'guest',
-        'X-Actual-Model': targetModel
+        'X-Actual-Model': cerebrasModel
       }
     });
 
