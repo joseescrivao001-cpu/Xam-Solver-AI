@@ -1369,7 +1369,8 @@ export default function ExamSolverGrand() {
     } finally {
       setIsStreaming(false);
       if (activeConvId && activeConvId !== "guest") {
-        loadConversation(activeConvId);
+        const cid = activeConvId;
+        setTimeout(() => loadConversation(cid), 2000);
         fetch("/api/chat/conversations")
           .then(r => r.json())
           .then(d => {
@@ -2500,15 +2501,17 @@ export default function ExamSolverGrand() {
                             <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                               {(() => {
                                 if (!msg.content) return "";
-                                if (msg.content.includes("</thought_process>")) {
-                                  const parts = msg.content.split("</thought_process>");
+                                let c = msg.content;
+                                c = c.replace(/\\\[/g, "$$").replace(/\\\]/g, "$$").replace(/\\\(/g, "$").replace(/\\\)/g, "$");
+                                if (c.includes("</thought_process>")) {
+                                  const parts = c.split("</thought_process>");
                                   const textAfter = parts[1]?.trim();
-                                  return textAfter ? textAfter : msg.content.replace(/<\/?thought_process>/g, "");
+                                  return textAfter ? textAfter : c.replace(/<\/?thought_process>/g, "");
                                 }
-                                if (msg.content.includes("<thought_process>")) {
-                                  return msg.content.replace(/<\/?thought_process>/g, "");
+                                if (c.includes("<thought_process>")) {
+                                  return c.replace(/<\/?thought_process>/g, "");
                                 }
-                                return msg.content;
+                                return c;
                               })()}
                             </ReactMarkdown>
                           </div>
