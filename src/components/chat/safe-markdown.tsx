@@ -39,13 +39,14 @@ export function SafeMarkdown({ content, isAiRole = false }: SafeMarkdownProps) {
 
   return (
     <ErrorBoundary FallbackComponent={MathFallback}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
-        className={`prose dark:prose-invert prose-sm max-w-none font-serif math-renderer ${isAiRole ? 'leading-relaxed' : ''}`}
-      >
-        {safeContent}
-      </ReactMarkdown>
+      <div className={`prose dark:prose-invert prose-sm max-w-none font-serif math-renderer ${isAiRole ? 'leading-relaxed' : ''}`}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm, remarkMath]}
+          rehypePlugins={[rehypeKatex]}
+        >
+          {safeContent}
+        </ReactMarkdown>
+      </div>
     </ErrorBoundary>
   );
 }
