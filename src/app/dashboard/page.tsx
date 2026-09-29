@@ -39,6 +39,7 @@ type Conversation = {
   id: string;
   title: string;
   notebook_id?: string | null;
+  created_at?: string;
 };
 
 type GalleryImage = {
@@ -1390,6 +1391,33 @@ export default function ExamSolverGrand() {
     return matchesNotebook && matchesSearch;
   });
 
+  const groupedConversations = filteredConversations.reduce((acc, conv) => {
+    if (!conv.created_at) {
+      if (!acc['Anteriores']) acc['Anteriores'] = [];
+      acc['Anteriores'].push(conv);
+      return acc;
+    }
+    const date = new Date(conv.created_at);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    let group = 'Anteriores';
+    if (date.toDateString() === today.toDateString()) {
+      group = 'Hoje';
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      group = 'Ontem';
+    } else if (today.getTime() - date.getTime() < 7 * 24 * 60 * 60 * 1000) {
+      group = 'Últimos 7 dias';
+    }
+    
+    if (!acc[group]) acc[group] = [];
+    acc[group].push(conv);
+    return acc;
+  }, {} as Record<string, Conversation[]>);
+
+  const groupOrder = ['Hoje', 'Ontem', 'Últimos 7 dias', 'Anteriores'];
+
   const activeNotebookObj = notebooks.find(nb => nb.id === activeNotebookId);
 
   return (
@@ -1502,47 +1530,57 @@ export default function ExamSolverGrand() {
                   <div className="px-3 py-6 text-center text-xs text-zinc-400 dark:text-zinc-500">
                     Nenhuma conversa neste caderno.
                   </div>
-                ) : filteredConversations.map(conv => {
-                  const assignedNbId = convNotebookMap[conv.id];
-                  const assignedNb = notebooks.find(n => n.id === assignedNbId);
-
+                ) : groupOrder.map(groupName => {
+                  const items = groupedConversations[groupName];
+                  if (!items || items.length === 0) return null;
+                  
                   return (
-                    <div key={conv.id} onMouseEnter={() => setHoveredConvId(conv.id)} onMouseLeave={() => setHoveredConvId(null)} className="relative">
-                      {editingConvId === conv.id ? (
-                        <div className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-zinc-800 rounded-lg shadow-sm border border-indigo-500/30">
-                          <input 
-                            autoFocus value={editTitle} onChange={e => setEditTitle(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && handleRename(conv.id)}
-                            className="bg-transparent text-[13px] text-zinc-900 dark:text-zinc-100 flex-1 outline-none min-w-0"
-                          />
-                          <button onClick={() => handleRename(conv.id)} className="text-indigo-500"><Check className="w-4 h-4" /></button>
-                        </div>
-                      ) : (
-                        <button 
-                          onClick={() => { loadConversation(conv.id); if (isMobile) toggleSidebar(false); }}
-                          className={`w-full text-left px-3 py-2 rounded-lg text-[13px] transition flex items-center justify-between ${activeView === 'chat' && currentConvId === conv.id ? 'bg-zinc-100 dark:bg-[#1A1A1A] text-zinc-900 dark:text-zinc-100 font-medium' : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-[#121212]'}`}
-                        >
-                          <div className="flex items-center gap-2 truncate pr-4">
-                            {assignedNb && (
-                              <span className={`w-2 h-2 rounded-full shrink-0 ${assignedNb.color === 'emerald' ? 'bg-emerald-500' : assignedNb.color === 'amber' ? 'bg-amber-500' : assignedNb.color === 'rose' ? 'bg-rose-500' : 'bg-indigo-500'}`} title={`Caderno: ${assignedNb.name}`} />
+                    <div key={groupName} className="mb-4">
+                      <p className="text-[10px] font-semibold text-zinc-400/80 dark:text-zinc-600 uppercase tracking-wider px-3 mb-1.5">{groupName}</p>
+                      {items.map(conv => {
+                        const assignedNbId = convNotebookMap[conv.id];
+                        const assignedNb = notebooks.find(n => n.id === assignedNbId);
+                        
+                        return (
+                          <div key={conv.id} onMouseEnter={() => setHoveredConvId(conv.id)} onMouseLeave={() => setHoveredConvId(null)} className="relative mb-0.5">
+                            {editingConvId === conv.id ? (
+                              <div className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-zinc-800 rounded-lg shadow-sm border border-indigo-500/30">
+                                <input 
+                                  autoFocus value={editTitle} onChange={e => setEditTitle(e.target.value)}
+                                  onKeyDown={e => e.key === 'Enter' && handleRename(conv.id)}
+                                  className="bg-transparent text-[13px] text-zinc-900 dark:text-zinc-100 flex-1 outline-none min-w-0"
+                                />
+                                <button onClick={() => handleRename(conv.id)} className="text-indigo-500"><Check className="w-4 h-4" /></button>
+                              </div>
+                            ) : (
+                              <button 
+                                onClick={() => { loadConversation(conv.id); if (isMobile) toggleSidebar(false); }}
+                                className={`w-full text-left px-3 py-2 rounded-lg text-[13px] transition flex items-center justify-between ${activeView === 'chat' && currentConvId === conv.id ? 'bg-zinc-100 dark:bg-[#1A1A1A] text-zinc-900 dark:text-zinc-100 font-medium' : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-[#121212]'}`}
+                              >
+                                <div className="flex items-center gap-2 truncate pr-4">
+                                  {assignedNb && (
+                                    <span className={`w-2 h-2 rounded-full shrink-0 ${assignedNb.color === 'emerald' ? 'bg-emerald-500' : assignedNb.color === 'amber' ? 'bg-amber-500' : assignedNb.color === 'rose' ? 'bg-rose-500' : 'bg-indigo-500'}`} title={`Caderno: ${assignedNb.name}`} />
+                                  )}
+                                  <span className="truncate">{conv.title}</span>
+                                </div>
+                                {hoveredConvId === conv.id && (
+                                  <div className="flex items-center gap-1.5 absolute right-2 bg-zinc-200/90 dark:bg-zinc-800/90 px-1.5 py-1 rounded shadow-sm">
+                                    <button onClick={(e) => { e.stopPropagation(); setMovingConvId(conv.id); }} title="Mover para outro caderno" className="text-zinc-500 hover:text-indigo-500">
+                                      <Folder className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button onClick={(e) => { e.stopPropagation(); setEditingConvId(conv.id); setEditTitle(conv.title); }} title="Renomear" className="text-zinc-500 hover:text-indigo-500">
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button onClick={(e) => handleDelete(conv.id, e)} title="Excluir" className="text-zinc-500 hover:text-rose-500">
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                )}
+                              </button>
                             )}
-                            <span className="truncate">{conv.title}</span>
                           </div>
-                          {hoveredConvId === conv.id && (
-                            <div className="flex items-center gap-1.5 absolute right-2 bg-zinc-200/90 dark:bg-zinc-800/90 px-1.5 py-1 rounded shadow-sm">
-                              <button onClick={(e) => { e.stopPropagation(); setMovingConvId(conv.id); }} title="Mover para outro caderno" className="text-zinc-500 hover:text-indigo-500">
-                                <Folder className="w-3.5 h-3.5" />
-                              </button>
-                              <button onClick={(e) => { e.stopPropagation(); setEditingConvId(conv.id); setEditTitle(conv.title); }} title="Renomear" className="text-zinc-500 hover:text-indigo-500">
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button onClick={(e) => handleDelete(conv.id, e)} title="Excluir" className="text-zinc-500 hover:text-rose-500">
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          )}
-                        </button>
-                      )}
+                        );
+                      })}
                     </div>
                   );
                 })}
@@ -1703,13 +1741,13 @@ export default function ExamSolverGrand() {
               <p className="text-zinc-500 mb-8">Todas as imagens de provas, exames e capturas de tela enviadas para a IA. Clique em qualquer imagem para reutilizar ou examinar.</p>
               
               {galleryImages.length === 0 ? (
-                <div className="p-16 text-center bg-white/60 dark:bg-zinc-900/60 backdrop-blur-md rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
+                <div className="p-16 text-center bg-transparent rounded-3xl border border-dashed border-zinc-200 dark:border-zinc-800">
                   <ImageIcon className="w-12 h-12 text-zinc-300 dark:text-zinc-700 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-zinc-900 dark:text-zinc-200">Sua galeria está vazia</h3>
-                  <p className="text-zinc-500 mt-2 text-sm max-w-md mx-auto">
+                  <p className="text-zinc-500 mt-2 text-sm max-w-md mx-auto leading-relaxed">
                     Assim que você enviar fotos de provas pelo chat, tirar fotos na câmera ou importar do Drive, elas ficarão salvas e acessíveis aqui.
                   </p>
-                  <Button onClick={() => setActiveView('chat')} className="mt-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl">
+                  <Button onClick={() => setActiveView('chat')} className="mt-6 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-900 rounded-xl shadow-none border-none">
                     Enviar primeira imagem
                   </Button>
                 </div>
@@ -1764,7 +1802,7 @@ export default function ExamSolverGrand() {
                       type="text" 
                       onChange={(e) => setNotebookFilter(e.target.value)}
                       placeholder="Pesquisar nos seus cadernos de estudo..." 
-                      className="w-full bg-white/70 dark:bg-zinc-900/70 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 rounded-2xl py-3.5 pl-12 pr-4 text-[15px] shadow-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all dark:text-zinc-100"
+                      className="w-full bg-transparent border border-zinc-200 dark:border-zinc-800 rounded-2xl py-3.5 pl-12 pr-4 text-[15px] outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all dark:text-zinc-100"
                     />
                   </div>
 
@@ -1776,43 +1814,43 @@ export default function ExamSolverGrand() {
                       return (
                         <div 
                           key={nb.id}
-                          className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl p-6 rounded-3xl border border-zinc-200/80 dark:border-zinc-800/80 shadow-sm flex flex-col justify-between hover:shadow-lg transition group relative"
+                          className="bg-transparent p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800/80 flex flex-col justify-between hover:bg-zinc-50 dark:hover:bg-zinc-900/30 transition group relative"
                         >
                           <div>
                             <div className="flex items-start justify-between">
                               <div className="flex items-center gap-4">
-                                <div className={`w-12 h-12 rounded-2xl ${colorBg} flex items-center justify-center shrink-0 shadow-sm`}>
-                                  <Folder className="w-6 h-6" />
+                                <div className={`w-10 h-10 rounded-xl ${colorBg} flex items-center justify-center shrink-0`}>
+                                  <Folder className="w-5 h-5" />
                                 </div>
                                 <div className="min-w-0">
-                                  <h3 className="font-bold text-zinc-900 dark:text-zinc-100 text-lg group-hover:text-indigo-500 transition truncate">{nb.name}</h3>
-                                  <p className="text-xs text-zinc-500 mt-0.5">{count} {count === 1 ? 'conversa' : 'conversas'}</p>
+                                  <h3 className="font-semibold text-zinc-900 dark:text-zinc-100 text-base group-hover:text-indigo-500 transition truncate">{nb.name}</h3>
+                                  <p className="text-[11px] text-zinc-500 mt-0.5">{count} {count === 1 ? 'conversa' : 'conversas'}</p>
                                 </div>
                               </div>
                               <button onClick={(e) => deleteNotebook(nb.id, e)} className="p-2 text-zinc-400 hover:text-rose-500 transition rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800" title="Excluir caderno">
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-4 line-clamp-2">
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-4 line-clamp-2 leading-relaxed">
                               {nb.description || "Ambiente com contexto isolado para resolução de provas e exercícios."}
                             </p>
                           </div>
 
-                          <div className="flex items-center gap-2 mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+                          <div className="flex items-center gap-2 mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-800/60">
                             <Button 
                               onClick={() => { setActiveNotebookId(nb.id); setNotebookTab('chat'); }} 
                               variant="outline" 
                               size="sm" 
-                              className="flex-1 rounded-xl text-xs font-semibold hover:border-indigo-500"
+                              className="flex-1 rounded-xl text-xs bg-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 border-zinc-200 dark:border-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100"
                             >
-                              Entrar no Ambiente
+                              Explorar
                             </Button>
                             <Button 
                               onClick={() => createNewChat(nb.id)} 
                               size="sm" 
-                              className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs"
+                              className="flex-1 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-900 rounded-xl text-xs shadow-none"
                             >
-                              <Plus className="w-3.5 h-3.5 mr-1" /> Novo Chat
+                              <Plus className="w-3.5 h-3.5 mr-1" /> Novo
                             </Button>
                           </div>
                         </div>
@@ -1883,10 +1921,11 @@ export default function ExamSolverGrand() {
                   {/* CONTEÚDO DA ABA SELECIONADA */}
 
                   {/* 1. ABA: CONVERSAS & FERRAMENTAS DE ESTUDO IA */}
+                  {/* 1. ABA: CONVERSAS & FERRAMENTAS DE ESTUDO IA */}
                   {notebookTab === 'chat' && (
                     <div className="space-y-6">
                       {/* 4 Botões de Estudo com IA */}
-                      <div className="bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-blue-500/10 border border-indigo-500/20 rounded-3xl p-5 shadow-xs">
+                      <div className="bg-transparent border border-zinc-200 dark:border-zinc-800 rounded-3xl p-5">
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-2">
                             <Sparkles className="w-5 h-5 text-indigo-500" />
