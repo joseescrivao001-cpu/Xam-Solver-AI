@@ -15,8 +15,8 @@ import {
   ArrowLeft, FileText, CheckCircle2, Download, Eye
 } from "lucide-react";
 import "katex/dist/katex.min.css";
-import { SafeMarkdown } from "@/components/chat/safe-markdown";
-import { SolutionProcess } from "@/components/chat/solution-process";
+import { ChatMessage } from "@/components/chat/chat-message";
+import { WelcomeScreen } from "@/components/chat/welcome-screen";
 import { useChatStore } from "@/lib/store/chat-store";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
@@ -2451,62 +2451,27 @@ export default function ExamSolverGrand() {
                   </div>
                 </div>
               ) : messages.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center max-w-3xl mx-auto w-full pb-20">
-                  <motion.div 
-                    initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-                    className="text-center"
-                  >
-                    <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-indigo-500/20">
-                      <BrainCircuit className="w-8 h-8 text-white" />
-                    </div>
-                    <h1 className="text-3xl md:text-4xl font-bold text-zinc-900 dark:text-zinc-100 mb-3">
-                      {activeNotebookObj ? `Ambiente: ${activeNotebookObj.name}` : "Como posso te ajudar hoje?"}
-                    </h1>
-                    <p className="text-zinc-500 text-sm md:text-base max-w-md mx-auto">
-                      {activeNotebookObj 
-                        ? "Todas as resoluções, imagens e dúvidas enviadas aqui são associadas automaticamente a este caderno."
-                        : "Envie uma imagem de prova, questão de concurso ou digite seu exercício para resolução acadêmica com precisão zero-alucinação."
-                      }
-                    </p>
-                  </motion.div>
-                </div>
+                /* ── WelcomeScreen (Design System Component) ── */
+                <WelcomeScreen
+                  notebookName={activeNotebookObj?.name ?? null}
+                  onSuggestionClick={(text) => setInputText(text)}
+                />
               ) : (
-                <div className="max-w-4xl mx-auto w-full space-y-8 pb-44 pt-6">
+                /* ── Chat message list (ChatMessage component) ── */
+                <div className="max-w-4xl mx-auto w-full space-y-6 pb-44 pt-6 px-2">
                   {messages.map((msg, idx) => (
-                    <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 260, damping: 20 }} key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      {msg.role === 'ai' && (
-                        <div className="w-8 h-8 shrink-0 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md mt-1">
-                          <BrainCircuit className="w-4 h-4 text-white" />
-                        </div>
-                      )}
-                      <div className={`w-fit max-w-[85%] md:max-w-[75%] ${msg.role === 'user' ? 'bg-zinc-100 dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 px-5 py-3.5 rounded-3xl rounded-tr-sm shadow-sm' : 'text-zinc-800 dark:text-zinc-200 px-1 py-1 w-full'}`}>
-                        {msg.image_url && (
-                          <div className="mb-3 cursor-pointer group" onClick={() => setSelectedGalleryImage({ id: msg.id, url: msg.image_url!, created_at: '', conversation_id: currentConvId || '' })}>
-                            <Image src={msg.image_url!} alt="Uploaded" width={400} height={400} unoptimized className="max-w-sm w-full h-auto rounded-2xl shadow-sm border border-zinc-200 dark:border-zinc-700 group-hover:opacity-95 transition" />
-                          </div>
-                        )}
-                        {msg.is_thinking ? (
-                          <div className="flex flex-col gap-3 my-2 max-w-lg w-full">
-                            <div className="flex items-center gap-3 mb-1">
-                              <Loader2 className="w-4 h-4 text-zinc-400 dark:text-zinc-500 animate-spin" />
-                              <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 tracking-wide uppercase">
-                                Processando Cognição...
-                              </span>
-                            </div>
-                            <div className="h-4 w-3/4 rounded-md skeleton-shimmer" />
-                            <div className="h-4 w-full rounded-md skeleton-shimmer" />
-                            <div className="h-4 w-5/6 rounded-md skeleton-shimmer" />
-                          </div>
-                        ) : msg.content === "" && isStreaming && idx === messages.length - 1 ? (
-                          <div className="flex items-center gap-2 text-indigo-500 py-3">
-                            <span className="w-2 h-4 rounded-sm bg-indigo-500/50 animate-pulse" />
-                          </div>
-                        ) : (
-                          <div className="w-full flex flex-col gap-2"><SolutionProcess thoughts={msg.thought_process || ""} />
-                            <SafeMarkdown content={msg.content} isAiRole={msg.role === 'ai'} isStreaming={isStreaming && idx === messages.length - 1 && msg.role === 'ai'} /></div>
-                        )}
-                      </div>
-                    </motion.div>
+                    <ChatMessage
+                      key={msg.id}
+                      msg={msg}
+                      isStreaming={isStreaming}
+                      isLastMessage={idx === messages.length - 1}
+                      onImageClick={(url, id) => setSelectedGalleryImage({
+                        id,
+                        url,
+                        created_at: '',
+                        conversation_id: currentConvId || ''
+                      })}
+                    />
                   ))}
                   <div ref={messagesEndRef} />
                 </div>
