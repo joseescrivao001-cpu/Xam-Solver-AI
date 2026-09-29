@@ -4,14 +4,13 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import Link from "next/link";
 import { 
   Menu, X, Plus, Image as ImageIcon, 
   BrainCircuit, AlertCircle, Edit2, Trash2, 
   Check, Sun, Moon, User, 
   Book, Sparkles, LogOut, ChevronDown, PenSquare, ArrowUp, Mic, ShieldCheck,
   Paperclip, Cloud, Camera, Search, Settings, Folder, FolderPlus,
-  RefreshCw, Key, Activity, Upload, Loader2, Crown, Zap,
+  RefreshCw, Key, Activity, Upload, Loader2,
   ArrowLeft, FileText, CheckCircle2, Download, Eye, Lock
 } from "lucide-react";
 import "katex/dist/katex.min.css";
