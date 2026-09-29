@@ -1393,7 +1393,7 @@ export default function ExamSolverGrand() {
   const activeNotebookObj = notebooks.find(nb => nb.id === activeNotebookId);
 
   return (
-    <div className="flex h-[100dvh] w-full bg-zinc-50 dark:bg-zinc-950 text-[#1f1f1f] dark:text-[#e3e3e3] font-sans overflow-hidden transition-colors duration-500">
+    <div className="flex h-[100dvh] w-full bg-white dark:bg-[#0A0A0A] text-[#1f1f1f] dark:text-[#e3e3e3] font-sans overflow-hidden transition-colors duration-500">
       
       {/* ---------------- SIDEBAR (ADAPTIVE DRAWER) ---------------- */}
       <AnimatePresence>
@@ -1406,7 +1406,7 @@ export default function ExamSolverGrand() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={() => toggleSidebar(false)}
-                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+                className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 lg:hidden"
               />
             )}
 
@@ -1416,7 +1416,7 @@ export default function ExamSolverGrand() {
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: -280, opacity: 0 }}
               transition={{ type: "spring", damping: 25, stiffness: 250 }}
-              className={`h-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-2xl border-r border-zinc-200 dark:border-zinc-800/80 flex flex-col z-50 shadow-2xl lg:shadow-none w-[280px] ${
+              className={`h-full bg-zinc-50 dark:bg-[#0A0A0A] border-r border-zinc-200/50 dark:border-zinc-900/50 flex flex-col z-50 lg:shadow-none w-[280px] ${
                 isMobile ? "fixed inset-y-0 left-0" : "relative flex-shrink-0"
               }`}
             >
@@ -1662,18 +1662,10 @@ export default function ExamSolverGrand() {
       </AnimatePresence>
 
       {/* ---------------- MAIN AREA ---------------- */}
-      <main className="flex-1 flex flex-col h-full relative z-10 overflow-hidden">
+      <main className="flex-1 flex flex-col h-full relative z-10 overflow-hidden bg-white dark:bg-[#0A0A0A]">
         
-        {/* Animated Background Gradients */}
-        <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden opacity-40 dark:opacity-20">
-          <div className="absolute top-[-10%] left-[20%] w-[50%] h-[50%] rounded-full bg-indigo-400/20 dark:bg-indigo-600/20 blur-[120px] animate-pulse" style={{ animationDuration: '15s' }} />
-          <div className="absolute bottom-[10%] right-[-5%] w-[40%] h-[40%] rounded-full bg-violet-400/20 dark:bg-violet-600/30 blur-[100px] animate-pulse" style={{ animationDuration: '12s', animationDelay: '2s' }} />
-        </div>
-
         {/* Top Navbar */}
-        <header className="h-14 flex items-center px-4 relative z-20 shrink-0 bg-white/40 dark:bg-zinc-950/40 backdrop-blur-md">
-          {/* Animated gradient line at bottom of header - Gemini style */}
-          <div className="absolute bottom-0 left-0 right-0 h-[2px]" style={{background: 'linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899, #6366f1)', backgroundSize: '200% 100%', animation: 'gradientShift 3s linear infinite'}} />
+        <header className="h-14 flex items-center px-4 relative z-20 shrink-0 bg-transparent">
           {(!isSidebarOpen || isMobile) && (
             <button 
               onClick={() => toggleSidebar(true)} 
@@ -2479,11 +2471,11 @@ export default function ExamSolverGrand() {
             </div>
 
             {/* ---------------- FLOATING INPUT AREA ---------------- */}
-            <div className={`left-0 right-0 w-full px-4 md:px-12 transition-all duration-700 z-30 flex flex-col items-center justify-end pointer-events-none ${messages.length === 0 ? 'relative pb-[15vh]' : 'absolute bottom-0 pb-8 bg-gradient-to-t from-zinc-50 via-zinc-50/80 dark:from-zinc-950 dark:via-zinc-950/80 to-transparent'}`}>
+            <div className={`left-0 right-0 w-full px-4 md:px-12 transition-all duration-700 z-30 flex flex-col items-center justify-end pointer-events-none ${messages.length === 0 ? 'relative pb-[15vh]' : 'absolute bottom-0 pb-8 bg-gradient-to-t from-white via-white/80 dark:from-[#0A0A0A] dark:via-[#0A0A0A]/80 to-transparent'}`}>
               <div className="max-w-3xl w-full pointer-events-auto">
                 
                 {/* Input Container */}
-                <div className="relative bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl shadow-[0_8px_40px_-12px_rgba(0,0,0,0.1)] dark:shadow-[0_8px_40px_-12px_rgba(0,0,0,0.4)] transition-all focus-within:shadow-[0_8px_40px_-12px_rgba(79,70,229,0.15)] flex flex-col">
+                <div className="relative bg-zinc-50 dark:bg-[#121212] border border-zinc-200 dark:border-zinc-800/80 rounded-3xl transition-all focus-within:border-zinc-300 dark:focus-within:border-zinc-700 flex flex-col shadow-sm">
                   
                   {/* Image Preview Area */}
                   <AnimatePresence>
@@ -2504,7 +2496,7 @@ export default function ExamSolverGrand() {
                     
                     {/* Attachment Dropdown */}
                     <div className="relative" ref={attachRef}>
-                      <button onClick={() => setIsAttachMenuOpen(!isAttachMenuOpen)} className="p-3 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition shrink-0">
+                      <button onClick={() => setIsAttachMenuOpen(!isAttachMenuOpen)} className="p-3.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded-full hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition shrink-0">
                         <Plus className="w-5 h-5" />
                       </button>
                       
@@ -2514,18 +2506,18 @@ export default function ExamSolverGrand() {
                             initial={{ opacity: 0, y: 10, scale: 0.95 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                            className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-[#252528] border border-zinc-200 dark:border-zinc-700 rounded-2xl shadow-xl overflow-hidden py-2 z-50"
+                            className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-[#18181A] border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden py-2 z-50"
                           >
-                            <button onClick={() => { setIsAttachMenuOpen(false); fileInputRef.current?.click(); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-left">
+                            <button onClick={() => { setIsAttachMenuOpen(false); fileInputRef.current?.click(); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition text-left">
                               <Paperclip className="w-4 h-4 text-zinc-500" /> Carregar ficheiros
                             </button>
-                            <button onClick={handleDrivePicker} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-left">
+                            <button onClick={handleDrivePicker} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition text-left">
                               <Cloud className="w-4 h-4 text-blue-500" /> Adicionar do Google Drive
                             </button>
                             <div className="border-t border-zinc-100 dark:border-zinc-800 my-1"></div>
-                            <button onClick={startCamera} className="w-full flex items-center justify-between px-4 py-3 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-left">
+                            <button onClick={startCamera} className="w-full flex items-center justify-between px-4 py-3 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition text-left">
                               <span className="flex items-center gap-3"><Camera className="w-4 h-4 text-zinc-500" /> Tirar foto</span>
-                              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-zinc-400" />
+                              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-zinc-500" />
                             </button>
                           </motion.div>
                         )}
@@ -2537,77 +2529,75 @@ export default function ExamSolverGrand() {
                       value={inputText}
                       onChange={(e) => setInputText(e.target.value)}
                       placeholder="Pergunte qualquer coisa ou cole sua prova..."
-                      className="min-h-[24px] max-h-40 bg-transparent border-0 focus-visible:ring-0 resize-none py-3 px-1 text-[15px] dark:text-zinc-100 text-zinc-900 placeholder:text-zinc-400 scrollbar-hide flex-1"
+                      className="min-h-[24px] max-h-40 bg-transparent border-0 focus-visible:ring-0 resize-none py-3.5 px-2 text-[15px] dark:text-zinc-200 text-zinc-900 placeholder:text-zinc-500 scrollbar-hide flex-1"
                       rows={1}
                       onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
                     />
 
-                    <div className="flex items-center gap-1 pb-1 pr-1 shrink-0">
+                    <div className="flex items-center gap-2 pb-1.5 pr-2 shrink-0">
                       
                       {/* Model Selector Pill */}
-                      {/* Model Selector Pill */}
                       <div className="relative" ref={modelRef}>
-                        <button onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
-                          {modelMode === "claude-opus-5" || modelMode === "gpt-6-astra" ? "Ultra (Claude 5)" : modelMode === "gpt-5.6-sol" ? "Pro (GPT-5.6)" : "Flash (DeepSeek)"}
-                          <ChevronDown className="w-3.5 h-3.5" />
+                        <button onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition">
+                          <BrainCircuit className="w-3.5 h-3.5 text-indigo-500 hidden sm:block" />
+                          {modelMode === "claude-opus-5" || modelMode === "gpt-6-astra" ? "Ultra" : modelMode === "gpt-5.6-sol" ? "Pro" : "Flash"}
+                          <ChevronDown className="w-3.5 h-3.5 opacity-50" />
                         </button>
                         {isModelDropdownOpen && (
-                          <div className="absolute bottom-full right-0 mb-2 w-52 bg-white dark:bg-[#252528] border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden py-1 z-50">
+                          <div className="absolute bottom-full right-0 mb-2 w-52 bg-white dark:bg-[#18181A] border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl overflow-hidden py-1 z-50">
                             <button 
                               onClick={() => { setModelMode("deepseek-v4-flash"); setIsModelDropdownOpen(false); }} 
-                              className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 flex items-center justify-between"
+                              className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
                             >
                               <div>
                                 <p className="font-medium text-xs">Flash (DeepSeek)</p>
-                                <p className="text-[10px] text-zinc-400">Rápido e Preciso</p>
+                                <p className="text-[10px] text-zinc-500">Rápido e Preciso</p>
                               </div>
-                              {modelMode === "deepseek-v4-flash" && <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                              {modelMode === "deepseek-v4-flash" && <Check className="w-3.5 h-3.5 text-indigo-500" />}
                             </button>
                             <button 
                               onClick={() => { 
                                 if (userPlan === 'free') {
                                   setIsPricingOpen(true);
-                                  setError("O modelo GPT-5.6 exige o Plano Pro ou Ultra.");
+                                  setError("O modelo Pro exige o Plano Pro ou Ultra.");
+                                  setIsModelDropdownOpen(false);
                                 } else {
                                   setModelMode("gpt-5.6-sol"); 
+                                  setIsModelDropdownOpen(false);
                                 }
-                                setIsModelDropdownOpen(false); 
                               }} 
-                              className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800"
+                              className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800"
                             >
                               <div>
-                                <p className="font-medium text-xs flex items-center gap-1.5">
+                                <p className="font-medium text-xs flex items-center gap-1">
                                   Pro (GPT-5.6)
-                                  {userPlan === 'free' && (
-                                    <span className="text-[9px] bg-blue-500/20 text-blue-400 font-bold px-1.5 py-0.5 rounded border border-blue-500/30 uppercase">PRO</span>
-                                  )}
+                                  {userPlan === 'free' && <Lock className="w-3 h-3 text-zinc-400" />}
                                 </p>
-                                <p className="text-[10px] text-zinc-400">Raciocínio Balanceado</p>
+                                <p className="text-[10px] text-zinc-500">Para questões complexas</p>
                               </div>
-                              {modelMode === "gpt-5.6-sol" && <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                              {modelMode === "gpt-5.6-sol" && <Check className="w-3.5 h-3.5 text-indigo-500" />}
                             </button>
                             <button 
                               onClick={() => { 
                                 if (userPlan !== 'ultra' && userPlan !== 'premium') {
                                   setIsPricingOpen(true);
-                                  setError("O modelo Claude Opus 5 exige o Plano Ultra.");
+                                  setError("O modelo Ultra exige o Plano Ultra.");
+                                  setIsModelDropdownOpen(false);
                                 } else {
                                   setModelMode("claude-opus-5"); 
+                                  setIsModelDropdownOpen(false);
                                 }
-                                setIsModelDropdownOpen(false); 
                               }} 
-                              className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800"
+                              className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800"
                             >
                               <div>
-                                <p className="font-medium text-xs flex items-center gap-1.5">
+                                <p className="font-medium text-xs flex items-center gap-1">
                                   Ultra (Claude 5)
-                                  {userPlan !== 'ultra' && userPlan !== 'premium' && (
-                                    <span className="text-[9px] bg-violet-500/20 text-violet-400 font-bold px-1.5 py-0.5 rounded border border-violet-500/30 uppercase">ULTRA</span>
-                                  )}
+                                  {userPlan !== 'ultra' && userPlan !== 'premium' && <Lock className="w-3 h-3 text-zinc-400" />}
                                 </p>
-                                <p className="text-[10px] text-zinc-400">Inteligência Máxima</p>
+                                <p className="text-[10px] text-zinc-500">Inteligência Máxima</p>
                               </div>
-                              {(modelMode === "claude-opus-5" || modelMode === "gpt-6-astra") && <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                              {(modelMode === "claude-opus-5" || modelMode === "gpt-6-astra") && <Check className="w-3.5 h-3.5 text-indigo-500" />}
                             </button>
                           </div>
                         )}
@@ -2616,20 +2606,20 @@ export default function ExamSolverGrand() {
                       {/* Microphone */}
                       <div className="relative flex items-center justify-center">
                         {isRecording && <span className="absolute -top-8 left-1/2 -translate-x-1/2 text-[10px] bg-rose-500 text-white px-2 py-0.5 rounded-full animate-pulse whitespace-nowrap z-50 shadow-md">Ouvindo...</span>}
-                        <button onClick={startRecording} className={`relative p-2.5 rounded-full transition ${isRecording ? 'text-rose-500 bg-rose-500/10' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}>
+                        <button onClick={startRecording} className={`relative p-2 rounded-full transition ${isRecording ? 'text-rose-500 bg-rose-500/10' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
                           {isRecording && <span className="absolute inset-0 rounded-full animate-ping bg-rose-500/40" />}
-                          <Mic className="w-5 h-5 relative z-10" />
+                          <Mic className="w-4 h-4 relative z-10" />
                         </button>
                       </div>
 
+                      {/* Send Button */}
                       <button 
                         onClick={handleSubmit}
-                        disabled={isStreaming || (!inputText.trim() && !imageFile && !imageBase64)}
-                        className={`p-2.5 rounded-full transition shadow-sm ${inputText.trim() || imageFile || imageBase64 ? 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed'}`}
+                        disabled={(!inputText.trim() && !imageBase64) || isStreaming}
+                        className="w-8 h-8 rounded-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-zinc-200 dark:disabled:bg-zinc-800 disabled:text-zinc-400 dark:disabled:text-zinc-500 text-white flex items-center justify-center transition-all disabled:opacity-50"
                       >
-                        <ArrowUp className="w-5 h-5" />
+                        {isStreaming ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUp className="w-4 h-4" />}
                       </button>
-
                     </div>
                   </div>
                 </div>

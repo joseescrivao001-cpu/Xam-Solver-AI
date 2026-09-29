@@ -62,57 +62,45 @@ export function WelcomeScreen({ notebookName, onSuggestionClick }: WelcomeScreen
       variants={containerVariants}
       initial="hidden"
       animate="show"
-      className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full pb-24 px-4 gap-8"
+      className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full pb-24 px-4 gap-6"
     >
       {/* Logo & Headline */}
       <motion.div variants={itemVariants} className="text-center">
         <div className="relative inline-block mb-6">
-          <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-indigo-500 via-violet-500 to-purple-600 flex items-center justify-center shadow-2xl shadow-indigo-500/25">
-            <BrainCircuit className="w-8 h-8 text-white" />
+          <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 dark:bg-indigo-500/20 flex items-center justify-center border border-indigo-500/20 dark:border-indigo-500/30">
+            <BrainCircuit className="w-6 h-6 text-indigo-500" />
           </div>
-          {/* Glow ring */}
-          <div className="absolute inset-0 rounded-3xl bg-gradient-to-tr from-indigo-500 to-purple-600 blur-xl opacity-30 -z-10 scale-110" />
         </div>
 
-        <h1 className="text-3xl md:text-4xl font-bold text-zinc-900 dark:text-zinc-50 tracking-tight mb-3">
+        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 mb-3">
           {notebookName
             ? `Ambiente: ${notebookName}`
-            : 'Como posso te ajudar hoje?'}
+            : <>Como posso ajudar nos <span className="text-indigo-500 dark:text-indigo-400">teus estudos?</span></>}
         </h1>
         <p className="text-zinc-500 dark:text-zinc-400 text-sm md:text-base max-w-md mx-auto leading-relaxed">
           {notebookName
             ? 'Resoluções e imagens enviadas aqui são associadas automaticamente a este caderno.'
-            : 'Envie uma imagem de prova ou questão para resolução acadêmica com precisão zero-alucinação.'}
+            : 'Resolva, estude e compreenda qualquer questão. Respostas analisadas e explicadas passo a passo.'}
         </p>
       </motion.div>
 
-      {/* Suggestion Chips */}
-      <motion.div variants={itemVariants} className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {SUGGESTIONS.map((s) => (
-          <button
-            key={s.label}
-            onClick={() => onSuggestionClick(s.text)}
-            className={`
-              group flex items-start gap-3 text-left
-              px-4 py-3.5 rounded-2xl border
-              bg-white/50 dark:bg-zinc-900/40 backdrop-blur-sm
-              ${s.bg}
-              transition-all duration-200
-              hover:scale-[1.02] hover:shadow-sm
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50
-            `}
-          >
-            <span className={`mt-0.5 shrink-0 ${s.color}`}>{s.icon}</span>
-            <div>
-              <span className={`block text-[11px] font-bold uppercase tracking-widest mb-0.5 ${s.color}`}>
-                {s.label}
-              </span>
-              <span className="text-[13px] text-zinc-600 dark:text-zinc-400 leading-snug line-clamp-2">
-                {s.text}
-              </span>
-            </div>
-          </button>
-        ))}
+      {/* Suggestion Chips - Minimal Outline */}
+      <motion.div variants={itemVariants} className="w-full mt-4">
+        <div className="flex items-center justify-center gap-2 mb-4 text-xs font-medium text-zinc-400">
+          Sugestões
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {SUGGESTIONS.map((s) => (
+            <button
+              key={s.label}
+              onClick={() => onSuggestionClick(s.text)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors text-sm"
+            >
+              <div className="text-indigo-500">{s.icon}</div>
+              {s.label}
+            </button>
+          ))}
+        </div>
       </motion.div>
     </motion.div>
   );
