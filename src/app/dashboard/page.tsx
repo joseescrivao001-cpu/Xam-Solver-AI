@@ -12,7 +12,7 @@ import {
   Book, Sparkles, LogOut, ChevronDown, PenSquare, ArrowUp, Mic, ShieldCheck,
   Paperclip, Cloud, Camera, Search, Settings, Folder, FolderPlus,
   RefreshCw, Key, Activity, Upload, Loader2, Crown, Zap,
-  ArrowLeft, FileText, CheckCircle2, Download, Eye
+  ArrowLeft, FileText, CheckCircle2, Download, Eye, Lock
 } from "lucide-react";
 import "katex/dist/katex.min.css";
 import { ChatMessage } from "@/components/chat/chat-message";
