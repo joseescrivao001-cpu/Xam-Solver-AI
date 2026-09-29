@@ -137,16 +137,7 @@ export default function ExamSolverGrand() {
 
     handleResize();
     window.addEventListener("resize", handleResize);
-    
-  const renderComposer = (isFloating: boolean) => (
-    <>
-      
-            {messages.length > 0 && renderComposer(true)}
-
-    </>
-  );
-
-  return () => window.removeEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   const toggleSidebar = (open: boolean) => {
@@ -1189,11 +1180,6 @@ export default function ExamSolverGrand() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      if (!file.type.startsWith('image/')) {
-        setError("O chat no momento aceita apenas imagens (JPG, PNG, WEBP). Para PDFs, anexe-os dentro de um Caderno de Estudo.");
-        setIsAttachMenuOpen(false);
-        return;
-      }
       setImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => setImageBase64(reader.result as string);
@@ -1433,6 +1419,199 @@ export default function ExamSolverGrand() {
   const groupOrder = ['Hoje', 'Ontem', 'Últimos 7 dias', 'Anteriores'];
 
   const activeNotebookObj = notebooks.find(nb => nb.id === activeNotebookId);
+
+
+  const composerNode = (
+    <>
+      {/* ---------------- FLOATING INPUT AREA ---------------- */}
+            <div className={`${messages.length === 0 ? "w-full flex flex-col items-center justify-center z-30 pointer-events-none mt-8" : "left-0 right-0 w-full px-4 md:px-12 transition-all duration-700 z-30 flex flex-col items-center justify-end pointer-events-none absolute bottom-0 pb-8 bg-gradient-to-t from-white via-white/80 dark:from-[#0A0A0A] dark:via-[#0A0A0A]/80 to-transparent"}`}>
+              <div className="max-w-3xl w-full pointer-events-auto">
+                
+                {/* Input Container */}
+                <div className="relative bg-white dark:bg-[#121212] border border-zinc-200 dark:border-zinc-800/80 rounded-[28px] transition-all focus-within:border-zinc-300 dark:focus-within:border-zinc-700 flex flex-col shadow-lg">
+                  
+                  {/* Image Preview Area */}
+                  <AnimatePresence>
+                    {imageBase64 && (
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="px-6 pt-4 pb-1">
+                        <div className="relative inline-block group">
+                          {imageBase64.startsWith('data:application/pdf') || imageBase64.endsWith('.pdf') ? (
+                            <div className="h-16 w-16 bg-zinc-100 dark:bg-zinc-800 flex flex-col items-center justify-center rounded-xl border border-zinc-200 dark:border-zinc-700 shadow-sm">
+                              <FileText className="w-6 h-6 text-indigo-500" />
+                              <span className="text-[10px] font-bold text-zinc-500 mt-1">PDF</span>
+                            </div>
+                          ) : (
+                            <Image src={imageBase64} alt="Preview" width={64} height={64} unoptimized className="h-16 w-16 object-cover rounded-xl border border-zinc-200 dark:border-zinc-700 shadow-sm" />
+                          )}
+                          <button onClick={() => { setImageFile(null); setImageBase64(null); }} className="absolute -top-2 -right-2 bg-zinc-800 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Main Input Row */}
+                  <div className="flex items-end gap-2 px-3 py-3 relative">
+                    
+                    {/* Attachment Dropdown */}
+                    <div className="relative" ref={attachRef}>
+                      <button onClick={() => setIsAttachMenuOpen(!isAttachMenuOpen)} className="p-3.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded-full hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition shrink-0">
+                        <Plus className="w-5 h-5" />
+                      </button>
+                      
+                      <AnimatePresence>
+                        {isAttachMenuOpen && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                            className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-[#18181A] border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden py-2 z-50"
+                          >
+                            <button onClick={() => { setIsAttachMenuOpen(false); fileInputRef.current?.click(); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition text-left">
+                              <Paperclip className="w-4 h-4 text-zinc-500" /> Carregar ficheiros
+                            </button>
+                            <button onClick={handleDrivePicker} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition text-left">
+                              <Cloud className="w-4 h-4 text-blue-500" /> Adicionar do Google Drive
+                            </button>
+                            <div className="border-t border-zinc-100 dark:border-zinc-800 my-1"></div>
+                            <button onClick={startCamera} className="w-full flex items-center justify-between px-4 py-3 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition text-left">
+                              <span className="flex items-center gap-3"><Camera className="w-4 h-4 text-zinc-500" /> Tirar foto</span>
+                              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-zinc-500" />
+                            </button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                      <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleFileChange} />
+                    </div>
+                    
+                    <Textarea 
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      placeholder="Pergunte qualquer coisa ou cole sua prova..."
+                      className="min-h-[24px] max-h-40 bg-transparent border-0 focus-visible:ring-0 resize-none py-3.5 px-2 text-[15px] dark:text-zinc-200 text-zinc-900 placeholder:text-zinc-500 scrollbar-hide flex-1"
+                      rows={1}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
+                    />
+
+                    <div className="flex items-center gap-2 pb-1.5 pr-2 shrink-0">
+                      
+                      {/* Model Selector Pill */}
+                      <div className="relative" ref={modelRef}>
+                        <button onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition">
+                          <BrainCircuit className="w-3.5 h-3.5 text-indigo-500 hidden sm:block" />
+                          {modelMode === "claude-opus-5" || modelMode === "gpt-6-astra" ? "Ultra" : modelMode === "gpt-5.6-sol" ? "Pro" : "Flash"}
+                          <ChevronDown className="w-3.5 h-3.5 opacity-50" />
+                        </button>
+                        {isModelDropdownOpen && (
+                          <div className="absolute bottom-full right-0 mb-2 w-52 bg-white dark:bg-[#18181A] border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl overflow-hidden py-1 z-50">
+                            <button 
+                              onClick={() => { setModelMode("deepseek-v4-flash"); setIsModelDropdownOpen(false); }} 
+                              className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+                            >
+                              <div>
+                                <p className="font-medium text-xs">Flash (DeepSeek)</p>
+                                <p className="text-[10px] text-zinc-500">Rápido e Preciso</p>
+                              </div>
+                              {modelMode === "deepseek-v4-flash" && <Check className="w-3.5 h-3.5 text-indigo-500" />}
+                            </button>
+                            <button 
+                              onClick={() => { 
+                                if (userPlan === 'free') {
+                                  setIsPricingOpen(true);
+                                  setError("O modelo Pro exige o Plano Pro ou Ultra.");
+                                  setIsModelDropdownOpen(false);
+                                } else {
+                                  setModelMode("gpt-5.6-sol"); 
+                                  setIsModelDropdownOpen(false);
+                                }
+                              }} 
+                              className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800"
+                            >
+                              <div>
+                                <p className="font-medium text-xs flex items-center gap-1">
+                                  Pro (GPT-5.6)
+                                  {userPlan === 'free' && <Lock className="w-3 h-3 text-zinc-400" />}
+                                </p>
+                                <p className="text-[10px] text-zinc-500">Para questões complexas</p>
+                              </div>
+                              {modelMode === "gpt-5.6-sol" && <Check className="w-3.5 h-3.5 text-indigo-500" />}
+                            </button>
+                            <button 
+                              onClick={() => { 
+                                if (userPlan !== 'ultra' && userPlan !== 'premium') {
+                                  setIsPricingOpen(true);
+                                  setError("O modelo Ultra exige o Plano Ultra.");
+                                  setIsModelDropdownOpen(false);
+                                } else {
+                                  setModelMode("claude-opus-5"); 
+                                  setIsModelDropdownOpen(false);
+                                }
+                              }} 
+                              className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800"
+                            >
+                              <div>
+                                <p className="font-medium text-xs flex items-center gap-1">
+                                  Ultra (Claude 5)
+                                  {userPlan !== 'ultra' && userPlan !== 'premium' && <Lock className="w-3 h-3 text-zinc-400" />}
+                                </p>
+                                <p className="text-[10px] text-zinc-500">Inteligência Máxima</p>
+                              </div>
+                              {(modelMode === "claude-opus-5" || modelMode === "gpt-6-astra") && <Check className="w-3.5 h-3.5 text-indigo-500" />}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Microphone */}
+                      <div className="relative flex items-center justify-center">
+                        {isRecording && <span className="absolute -top-8 left-1/2 -translate-x-1/2 text-[10px] bg-rose-500 text-white px-2 py-0.5 rounded-full animate-pulse whitespace-nowrap z-50 shadow-md">Ouvindo...</span>}
+                        <button onClick={startRecording} className={`relative p-2 rounded-full transition ${isRecording ? 'text-rose-500 bg-rose-500/10' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
+                          {isRecording && <span className="absolute inset-0 rounded-full animate-ping bg-rose-500/40" />}
+                          <Mic className="w-4 h-4 relative z-10" />
+                        </button>
+                      </div>
+
+                      {/* Send Button */}
+                      <button 
+                        onClick={handleSubmit}
+                        disabled={(!inputText.trim() && !imageBase64) || isStreaming}
+                        className="w-8 h-8 rounded-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-zinc-200 dark:disabled:bg-zinc-800 disabled:text-zinc-400 dark:disabled:text-zinc-500 text-white flex items-center justify-center transition-all disabled:opacity-50"
+                      >
+                        {isStreaming ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUp className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {messages.length === 0 && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex flex-wrap items-center justify-center gap-4 sm:gap-8 mt-6"
+                  >
+                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200 transition">
+                      <Paperclip className="w-4 h-4" /> Anexar arquivo
+                    </button>
+                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200 transition">
+                      <ImageIcon className="w-4 h-4" /> Enviar imagem
+                    </button>
+                    <button onClick={handleDrivePicker} className="flex items-center gap-2 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200 transition">
+                      <Cloud className="w-4 h-4" /> Google Drive
+                    </button>
+                    <button onClick={startRecording} className="flex items-center gap-2 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200 transition">
+                      <Mic className="w-4 h-4" /> Usar voz
+                    </button>
+                  </motion.div>
+                )}
+
+                <p className={`text-center text-[11px] text-zinc-400 transition-all ${messages.length === 0 ? 'mt-8' : 'mt-2'}`}>
+                  A IA pode cometer erros. Ao usar o ExamSolver, você concorda com nossos Termos e Política de privacidade.
+                </p>
+              </div>
+            </div>
+    </>
+  );
 
   return (
     <div className="flex h-[100dvh] w-full bg-white dark:bg-[#0A0A0A] text-[#1f1f1f] dark:text-[#e3e3e3] font-sans overflow-hidden transition-colors duration-500">
@@ -2451,7 +2630,7 @@ export default function ExamSolverGrand() {
                   notebookName={activeNotebookObj?.name ?? null}
                   onSuggestionClick={(text) => setInputText(text)}
                 >
-                  {renderComposer(false)}
+                  {messages.length === 0 && composerNode}
                 </WelcomeScreen>
               ) : (
                 /* ── Chat message list (ChatMessage component) ── */
@@ -2475,186 +2654,7 @@ export default function ExamSolverGrand() {
               )}
             </div>
 
-            {/* ---------------- FLOATING INPUT AREA ---------------- */}
-            <div className={`left-0 right-0 w-full px-4 md:px-12 transition-all duration-700 z-30 flex flex-col items-center pointer-events-none ${messages.length === 0 ? 'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 mt-16 justify-center' : 'absolute bottom-0 pb-8 justify-end bg-gradient-to-t from-white via-white/80 dark:from-[#0A0A0A] dark:via-[#0A0A0A]/80 to-transparent'}`}>
-              <div className="max-w-3xl w-full pointer-events-auto">
-                
-                {/* Input Container */}
-                <div className="relative bg-white dark:bg-[#121212] border border-zinc-200 dark:border-zinc-800/80 rounded-[28px] transition-all focus-within:border-zinc-300 dark:focus-within:border-zinc-700 flex flex-col shadow-lg">
-                  
-                  {/* Image Preview Area */}
-                  <AnimatePresence>
-                    {imageBase64 && (
-                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="px-6 pt-4 pb-1">
-                        <div className="relative inline-block group">
-                          <Image src={imageBase64!} alt="Preview" width={64} height={64} unoptimized className="h-16 w-16 object-cover rounded-xl border border-zinc-200 dark:border-zinc-700 shadow-sm" />
-                          <button onClick={() => { setImageFile(null); setImageBase64(null); }} className="absolute -top-2 -right-2 bg-zinc-800 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {/* Main Input Row */}
-                  <div className="flex items-end gap-2 px-3 py-3 relative">
-                    
-                    {/* Attachment Dropdown */}
-                    <div className="relative" ref={attachRef}>
-                      <button onClick={() => setIsAttachMenuOpen(!isAttachMenuOpen)} className="p-3.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded-full hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition shrink-0">
-                        <Plus className="w-5 h-5" />
-                      </button>
-                      
-                      <AnimatePresence>
-                        {isAttachMenuOpen && (
-                          <motion.div 
-                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                            className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-[#18181A] border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden py-2 z-50"
-                          >
-                            <button onClick={() => { setIsAttachMenuOpen(false); fileInputRef.current?.click(); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition text-left">
-                              <Paperclip className="w-4 h-4 text-zinc-500" /> Carregar ficheiros
-                            </button>
-                            <button onClick={handleDrivePicker} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition text-left">
-                              <Cloud className="w-4 h-4 text-blue-500" /> Adicionar do Google Drive
-                            </button>
-                            <div className="border-t border-zinc-100 dark:border-zinc-800 my-1"></div>
-                            <button onClick={startCamera} className="w-full flex items-center justify-between px-4 py-3 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition text-left">
-                              <span className="flex items-center gap-3"><Camera className="w-4 h-4 text-zinc-500" /> Tirar foto</span>
-                              <ChevronDown className="w-3.5 h-3.5 -rotate-90 text-zinc-500" />
-                            </button>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                      <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleFileChange} />
-                    </div>
-                    
-                    <Textarea 
-                      value={inputText}
-                      onChange={(e) => setInputText(e.target.value)}
-                      placeholder="Pergunte qualquer coisa ou cole sua prova..."
-                      className="min-h-[24px] max-h-40 bg-transparent border-0 focus-visible:ring-0 resize-none py-3.5 px-2 text-[15px] dark:text-zinc-200 text-zinc-900 placeholder:text-zinc-500 scrollbar-hide flex-1"
-                      rows={1}
-                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
-                    />
-
-                    <div className="flex items-center gap-2 pb-1.5 pr-2 shrink-0">
-                      
-                      {/* Model Selector Pill */}
-                      <div className="relative" ref={modelRef}>
-                        <button onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition">
-                          <BrainCircuit className="w-3.5 h-3.5 text-indigo-500 hidden sm:block" />
-                          {modelMode === "claude-opus-5" || modelMode === "gpt-6-astra" ? "Ultra" : modelMode === "gpt-5.6-sol" ? "Pro" : "Flash"}
-                          <ChevronDown className="w-3.5 h-3.5 opacity-50" />
-                        </button>
-                        {isModelDropdownOpen && (
-                          <div className="absolute bottom-full right-0 mb-2 w-52 bg-white dark:bg-[#18181A] border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl overflow-hidden py-1 z-50">
-                            <button 
-                              onClick={() => { setModelMode("deepseek-v4-flash"); setIsModelDropdownOpen(false); }} 
-                              className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
-                            >
-                              <div>
-                                <p className="font-medium text-xs">Flash (DeepSeek)</p>
-                                <p className="text-[10px] text-zinc-500">Rápido e Preciso</p>
-                              </div>
-                              {modelMode === "deepseek-v4-flash" && <Check className="w-3.5 h-3.5 text-indigo-500" />}
-                            </button>
-                            <button 
-                              onClick={() => { 
-                                if (userPlan === 'free') {
-                                  setIsPricingOpen(true);
-                                  setError("O modelo Pro exige o Plano Pro ou Ultra.");
-                                  setIsModelDropdownOpen(false);
-                                } else {
-                                  setModelMode("gpt-5.6-sol"); 
-                                  setIsModelDropdownOpen(false);
-                                }
-                              }} 
-                              className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800"
-                            >
-                              <div>
-                                <p className="font-medium text-xs flex items-center gap-1">
-                                  Pro (GPT-5.6)
-                                  {userPlan === 'free' && <Lock className="w-3 h-3 text-zinc-400" />}
-                                </p>
-                                <p className="text-[10px] text-zinc-500">Para questões complexas</p>
-                              </div>
-                              {modelMode === "gpt-5.6-sol" && <Check className="w-3.5 h-3.5 text-indigo-500" />}
-                            </button>
-                            <button 
-                              onClick={() => { 
-                                if (userPlan !== 'ultra' && userPlan !== 'premium') {
-                                  setIsPricingOpen(true);
-                                  setError("O modelo Ultra exige o Plano Ultra.");
-                                  setIsModelDropdownOpen(false);
-                                } else {
-                                  setModelMode("claude-opus-5"); 
-                                  setIsModelDropdownOpen(false);
-                                }
-                              }} 
-                              className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800"
-                            >
-                              <div>
-                                <p className="font-medium text-xs flex items-center gap-1">
-                                  Ultra (Claude 5)
-                                  {userPlan !== 'ultra' && userPlan !== 'premium' && <Lock className="w-3 h-3 text-zinc-400" />}
-                                </p>
-                                <p className="text-[10px] text-zinc-500">Inteligência Máxima</p>
-                              </div>
-                              {(modelMode === "claude-opus-5" || modelMode === "gpt-6-astra") && <Check className="w-3.5 h-3.5 text-indigo-500" />}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Microphone */}
-                      <div className="relative flex items-center justify-center">
-                        {isRecording && <span className="absolute -top-8 left-1/2 -translate-x-1/2 text-[10px] bg-rose-500 text-white px-2 py-0.5 rounded-full animate-pulse whitespace-nowrap z-50 shadow-md">Ouvindo...</span>}
-                        <button onClick={startRecording} className={`relative p-2 rounded-full transition ${isRecording ? 'text-rose-500 bg-rose-500/10' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}>
-                          {isRecording && <span className="absolute inset-0 rounded-full animate-ping bg-rose-500/40" />}
-                          <Mic className="w-4 h-4 relative z-10" />
-                        </button>
-                      </div>
-
-                      {/* Send Button */}
-                      <button 
-                        onClick={handleSubmit}
-                        disabled={(!inputText.trim() && !imageBase64) || isStreaming}
-                        className="w-8 h-8 rounded-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-zinc-200 dark:disabled:bg-zinc-800 disabled:text-zinc-400 dark:disabled:text-zinc-500 text-white flex items-center justify-center transition-all disabled:opacity-50"
-                      >
-                        {isStreaming ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUp className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {messages.length === 0 && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex flex-wrap items-center justify-center gap-4 sm:gap-8 mt-6"
-                  >
-                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200 transition">
-                      <Paperclip className="w-4 h-4" /> Anexar arquivo
-                    </button>
-                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200 transition">
-                      <ImageIcon className="w-4 h-4" /> Enviar imagem
-                    </button>
-                    <button onClick={handleDrivePicker} className="flex items-center gap-2 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200 transition">
-                      <Cloud className="w-4 h-4" /> Google Drive
-                    </button>
-                    <button onClick={startRecording} className="flex items-center gap-2 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200 transition">
-                      <Mic className="w-4 h-4" /> Usar voz
-                    </button>
-                  </motion.div>
-                )}
-
-                <p className={`text-center text-[11px] text-zinc-400 transition-all ${messages.length === 0 ? 'mt-8' : 'mt-2'}`}>
-                  A IA pode cometer erros. Ao usar o ExamSolver, você concorda com nossos Termos e Política de privacidade.
-                </p>
-              </div>
-            </div>
+            {messages.length > 0 && composerNode}
           </>
         )}
       </main>

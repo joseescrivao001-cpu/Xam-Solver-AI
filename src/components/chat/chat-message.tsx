@@ -2,11 +2,10 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { BrainCircuit } from 'lucide-react';
+import { BrainCircuit, Loader2, FileText } from 'lucide-react';
 import Image from 'next/image';
 import { SafeMarkdown } from './safe-markdown';
 import { SolutionProcess } from './solution-process';
-import { Loader2 } from 'lucide-react';
 
 export interface ChatMessageData {
   id: string;
@@ -58,14 +57,21 @@ export function ChatMessage({ msg, isStreaming, isLastMessage, onImageClick }: C
             className="mb-1 cursor-pointer group"
             onClick={() => onImageClick?.(msg.image_url!, msg.id)}
           >
-            <Image
-              src={msg.image_url}
-              alt="Uploaded"
-              width={400}
-              height={400}
-              unoptimized
-              className="max-w-xs w-full h-auto rounded-2xl shadow-sm border border-zinc-200 dark:border-zinc-700 group-hover:opacity-90 transition-opacity"
-            />
+            {msg.image_url.startsWith('data:application/pdf') || msg.image_url.endsWith('.pdf') ? (
+              <div className="max-w-xs w-full h-32 flex flex-col items-center justify-center rounded-2xl shadow-sm border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 group-hover:opacity-90 transition-opacity">
+                <FileText className="w-10 h-10 text-indigo-500 mb-2" />
+                <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">Documento PDF (Upload)</span>
+              </div>
+            ) : (
+              <Image
+                src={msg.image_url}
+                alt="Uploaded"
+                width={400}
+                height={400}
+                unoptimized
+                className="max-w-xs w-full h-auto rounded-2xl shadow-sm border border-zinc-200 dark:border-zinc-700 group-hover:opacity-90 transition-opacity"
+              />
+            )}
           </div>
         )}
 
