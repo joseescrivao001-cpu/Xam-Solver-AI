@@ -1671,7 +1671,9 @@ export default function ExamSolverGrand() {
         </div>
 
         {/* Top Navbar */}
-        <header className="h-14 flex items-center px-4 relative z-20 shrink-0 border-b border-zinc-200/50 dark:border-zinc-800/50 bg-white/40 dark:bg-zinc-950/40 backdrop-blur-md">
+        <header className="h-14 flex items-center px-4 relative z-20 shrink-0 bg-white/40 dark:bg-zinc-950/40 backdrop-blur-md">
+          {/* Animated gradient line at bottom of header - Gemini style */}
+          <div className="absolute bottom-0 left-0 right-0 h-[2px]" style={{background: 'linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899, #6366f1)', backgroundSize: '200% 100%', animation: 'gradientShift 3s linear infinite'}} />
           {(!isSidebarOpen || isMobile) && (
             <button 
               onClick={() => toggleSidebar(true)} 

@@ -10,6 +10,11 @@
   }
 }
 
+@keyframes gradientShift {
+  0%   { background-position: 0% 0%; }
+  100% { background-position: 200% 0%; }
+}
+
 @layer base {
   .theme {
     --font-heading: var(--font-sans);
