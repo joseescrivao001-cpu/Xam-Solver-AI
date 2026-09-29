@@ -137,7 +137,16 @@ export default function ExamSolverGrand() {
 
     handleResize();
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    
+  const renderComposer = (isFloating: boolean) => (
+    <>
+      
+            {messages.length > 0 && renderComposer(true)}
+
+    </>
+  );
+
+  return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   const toggleSidebar = (open: boolean) => {
@@ -2441,7 +2450,9 @@ export default function ExamSolverGrand() {
                 <WelcomeScreen
                   notebookName={activeNotebookObj?.name ?? null}
                   onSuggestionClick={(text) => setInputText(text)}
-                />
+                >
+                  {renderComposer(false)}
+                </WelcomeScreen>
               ) : (
                 /* ── Chat message list (ChatMessage component) ── */
                 <div className="max-w-4xl mx-auto w-full space-y-6 pb-44 pt-6 px-2">
@@ -2469,7 +2480,7 @@ export default function ExamSolverGrand() {
               <div className="max-w-3xl w-full pointer-events-auto">
                 
                 {/* Input Container */}
-                <div className="relative bg-[#1A1A1A] dark:bg-[#121212] border border-zinc-200 dark:border-zinc-800/80 rounded-[28px] transition-all focus-within:border-zinc-300 dark:focus-within:border-zinc-700 flex flex-col shadow-lg">
+                <div className="relative bg-white dark:bg-[#121212] border border-zinc-200 dark:border-zinc-800/80 rounded-[28px] transition-all focus-within:border-zinc-300 dark:focus-within:border-zinc-700 flex flex-col shadow-lg">
                   
                   {/* Image Preview Area */}
                   <AnimatePresence>
