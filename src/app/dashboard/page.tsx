@@ -1520,7 +1520,7 @@ export default function ExamSolverGrand() {
                       ) : (
                         <button 
                           onClick={() => { loadConversation(conv.id); if (isMobile) toggleSidebar(false); }}
-                          className={`w-full text-left px-3 py-2 rounded-lg text-[13px] transition flex items-center justify-between ${activeView === 'chat' && currentConvId === conv.id ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 font-medium' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/40 dark:hover:bg-zinc-800/40'}`}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-[13px] transition flex items-center justify-between ${activeView === 'chat' && currentConvId === conv.id ? 'bg-zinc-100 dark:bg-[#1A1A1A] text-zinc-900 dark:text-zinc-100 font-medium' : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-[#121212]'}`}
                         >
                           <div className="flex items-center gap-2 truncate pr-4">
                             {assignedNb && (
@@ -1550,110 +1550,68 @@ export default function ExamSolverGrand() {
             </div>
 
             {/* Bottom Profile / Settings Trigger */}
-            <div className="p-3 border-t border-zinc-200 dark:border-zinc-800/60 space-y-2">
+            <div className="p-3 mt-auto space-y-1">
               {!isProfileLoaded ? (
-                <div className="rounded-2xl p-3.5 bg-zinc-200/40 dark:bg-zinc-800/40 border border-zinc-300/30 dark:border-zinc-700/30 animate-pulse space-y-2">
-                  <div className="h-3.5 w-24 bg-zinc-300/60 dark:bg-zinc-700/60 rounded" />
-                  <div className="h-3 w-32 bg-zinc-300/40 dark:bg-zinc-700/40 rounded" />
-                </div>
+                <div className="rounded-xl p-3 bg-zinc-200/40 dark:bg-zinc-800/40 animate-pulse h-12" />
               ) : (
-                <div 
-                  onClick={() => setIsPricingOpen(true)} 
-                  className={`rounded-2xl p-3.5 text-white shadow-lg relative overflow-hidden group cursor-pointer transition-all hover:scale-[1.01] ${
-                    userPlan === 'premium' 
-                      ? 'bg-gradient-to-r from-amber-600 via-yellow-600 to-amber-700 border border-amber-400/30' 
-                      : userPlan === 'pro'
-                      ? 'bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 border border-indigo-400/30'
-                      : 'bg-zinc-800/80 border border-zinc-700/60'
-                  }`}
-                >
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 blur-xl group-hover:scale-150 transition-transform duration-500 pointer-events-none" />
-                  <div className="flex items-center justify-between relative z-10 gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-bold flex items-center gap-1 truncate">
-                        {userPlan === 'premium' ? (
-                          <><Crown className="w-3.5 h-3.5 text-amber-200 shrink-0"/> VIP Ilimitado</>
-                        ) : userPlan === 'pro' ? (
-                          <><Sparkles className="w-3.5 h-3.5 text-blue-200 shrink-0"/> Plano Pro</>
-                        ) : (
-                          <><Zap className="w-3.5 h-3.5 text-zinc-300 shrink-0"/> Plano Free</>
-                        )}
-                      </p>
-                      <p className="text-[11px] text-white/80 mt-0.5 truncate">
-                        {userPlan === 'premium' 
-                          ? 'Créditos Ilimitados' 
-                          : `${credits.toLocaleString("pt-AO")} Créditos ${user ? 'ativos' : 'de teste'}`}
-                      </p>
+                <>
+                  <div onClick={() => setIsPricingOpen(true)} className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-zinc-100 dark:hover:bg-[#121212] rounded-xl transition group text-zinc-500">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className={`w-3.5 h-3.5 ${userPlan === 'premium' ? 'text-amber-500' : 'text-zinc-400'}`} />
+                      <span className="text-[12px] font-medium text-zinc-700 dark:text-zinc-300">
+                        Plano {userPlan === 'premium' ? 'VIP' : userPlan === 'pro' ? 'Pro' : 'Free'}
+                      </span>
                     </div>
-                    <Button 
-                      size="sm" 
-                      onClick={(e) => { e.stopPropagation(); setIsPricingOpen(true); }} 
-                      className="bg-white text-zinc-900 hover:bg-zinc-100 h-7 text-xs rounded-lg px-2.5 font-bold shadow-sm shrink-0"
+                    <ChevronDown className="w-3.5 h-3.5 opacity-0 group-hover:opacity-50 transition -rotate-90" />
+                  </div>
+
+                  {isAdmin && (
+                    <button
+                      onClick={() => router.push("/admin")}
+                      className="w-full flex items-center justify-between px-3 py-2 hover:bg-zinc-100 dark:hover:bg-[#121212] rounded-xl transition text-zinc-500 group"
                     >
-                      {userPlan === 'premium' ? 'Planos' : 'Upgrade'}
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {isAdmin && (
-                <button
-                  onClick={() => router.push("/admin")}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-indigo-500/20 to-purple-500/20 border border-amber-500/40 text-amber-300 hover:text-amber-200 text-xs font-semibold shadow-sm hover:brightness-110 transition cursor-pointer"
-                >
-                  <ShieldCheck className="w-4 h-4 text-amber-400" />
-                  Painel de Administração
-                </button>
-              )}
-
-              <div onClick={() => user ? setIsSettingsOpen(true) : router.push("/login")} className="flex items-center justify-between px-2 py-2 mt-2 cursor-pointer hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 rounded-xl transition">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div 
-                    onClick={(e) => {
-                      if (user) {
-                        e.stopPropagation();
-                        setIsAvatarModalOpen(true);
-                      }
-                    }}
-                    className="relative w-8 h-8 rounded-full overflow-hidden shrink-0 border border-indigo-500/40 hover:ring-2 ring-indigo-500 transition cursor-pointer"
-                    title="Clique para trocar sua foto"
-                  >
-                    {userAvatar ? (
-                      <img src={userAvatar} alt="Avatar" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs shadow-sm">
-                        {userFullName ? userFullName.slice(0, 2).toUpperCase() : user?.email ? user.email.slice(0, 2).toUpperCase() : <User className="w-4 h-4" />}
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="w-3.5 h-3.5 text-zinc-400" />
+                        <span className="text-[12px] font-medium text-zinc-700 dark:text-zinc-300">Administração</span>
                       </div>
-                    )}
-                  </div>
-                  <div className="overflow-hidden min-w-0 flex-1">
-                    {user ? (
-                      <>
-                        <p className="text-[13px] font-medium text-zinc-900 dark:text-zinc-200 truncate">{userFullName || user?.email?.split('@')[0] || "Estudante"}</p>
-                        <p className="text-[11px] text-zinc-500 truncate" title={user?.email}>{user?.email}</p>
-                      </>
-                    ) : (
-                      <p className="text-[13px] font-medium text-zinc-900 dark:text-zinc-200 truncate">Iniciar sessão</p>
-                    )}
-                  </div>
-                </div>
-                {user ? (
-                  <button onClick={(e) => { e.stopPropagation(); setIsSettingsOpen(true); }} className="p-1.5 text-zinc-400 hover:text-indigo-500 rounded-lg transition shrink-0" title="Configurações de Conta">
-                    <Settings className="w-4 h-4" />
-                  </button>
-                ) : (
-                  <Button size="sm" variant="ghost" onClick={() => router.push("/login")}>Entrar</Button>
-                )}
-              </div>
+                      <ChevronDown className="w-3.5 h-3.5 opacity-0 group-hover:opacity-50 transition -rotate-90" />
+                    </button>
+                  )}
 
-              {isAdmin && (
-                <Link
-                  href="/system-check"
-                  className="w-full flex items-center justify-center gap-1.5 py-1 text-[11px] text-zinc-500 hover:text-zinc-300 transition"
-                >
-                  <Activity className="w-3 h-3 text-indigo-400" />
-                  Diagnóstico do Sistema
-                </Link>
+                  <div onClick={() => user ? setIsSettingsOpen(true) : router.push("/login")} className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-zinc-100 dark:hover:bg-[#121212] rounded-xl transition mt-1">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div 
+                        onClick={(e) => {
+                          if (user) {
+                            e.stopPropagation();
+                            setIsAvatarModalOpen(true);
+                          }
+                        }}
+                        className="relative w-6 h-6 rounded-full overflow-hidden shrink-0 bg-zinc-200 dark:bg-zinc-800"
+                      >
+                        {userAvatar ? (
+                          <img src={userAvatar} alt="Avatar" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-zinc-500 font-bold text-[9px]">
+                            {userFullName ? userFullName.slice(0, 2).toUpperCase() : user?.email ? user.email.slice(0, 2).toUpperCase() : <User className="w-3 h-3" />}
+                          </div>
+                        )}
+                      </div>
+                      <div className="overflow-hidden min-w-0">
+                        {user ? (
+                          <p className="text-[12px] font-medium text-zinc-900 dark:text-zinc-200 truncate">{userFullName || user?.email?.split('@')[0] || "Estudante"}</p>
+                        ) : (
+                          <p className="text-[12px] font-medium text-zinc-900 dark:text-zinc-200 truncate">Iniciar sessão</p>
+                        )}
+                      </div>
+                    </div>
+                    {user ? (
+                      <Settings className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                    ) : (
+                      <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => router.push("/login")}>Entrar</Button>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </motion.aside>
@@ -1710,31 +1668,23 @@ export default function ExamSolverGrand() {
             {!isProfileLoaded ? (
               <div className="flex items-center gap-2">
                 <div className="h-8 w-36 rounded-lg bg-zinc-200/50 dark:bg-zinc-800/50 animate-pulse border border-zinc-300/30 dark:border-zinc-700/30" />
-                <div className="hidden sm:inline-block h-8 w-20 rounded-lg bg-zinc-200/50 dark:bg-zinc-800/50 animate-pulse" />
               </div>
             ) : (
-              <>
-                <button onClick={() => setIsPricingOpen(true)} className="text-xs text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition shadow-xs">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <div className="flex items-center gap-4">
+                <button onClick={() => setIsPricingOpen(true)} className="text-[13px] text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 transition flex items-center gap-1.5 font-medium">
+                  <div className="w-5 h-5 bg-zinc-100 dark:bg-zinc-800 rounded-md flex items-center justify-center border border-zinc-200 dark:border-zinc-700/50 shadow-sm">
+                    <Sparkles className="w-3 h-3 text-zinc-400 dark:text-zinc-500" />
+                  </div>
                   <span>
-                    {userPlan === 'premium' ? '✨ Créditos Ilimitados (PREMIUM)' : `${credits.toLocaleString("pt-AO")} Créditos (${(userPlan || 'free').toUpperCase()})`}
+                    {userPlan === 'premium' ? '∞ Créditos' : `${credits.toLocaleString("pt-AO")} Créditos`}
                   </span>
                 </button>
-                {userPlan !== 'premium' ? (
-                  <button onClick={() => setIsPricingOpen(true)} className="hidden sm:inline-flex text-xs font-semibold px-3 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-sm transition items-center gap-1.5 cursor-pointer">
-                    <Sparkles className="w-3 h-3" />
-                    Upgrade
-                  </button>
-                ) : (
-                  <span className="hidden sm:inline-flex text-xs font-bold px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 items-center gap-1">
-                    <Crown className="w-3.5 h-3.5" /> VIP Ilimitado
-                  </span>
-                )}
-              </>
+                <div className="flex items-center gap-2 text-[13px] text-zinc-500 font-medium bg-zinc-100 dark:bg-zinc-800/50 px-2 py-1 rounded-full">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                  Online
+                </div>
+              </div>
             )}
-            <span className="text-[13px] font-medium text-zinc-400 flex items-center gap-1">
-              <ShieldCheck className="w-4 h-4 text-emerald-500" /> Conexão Blindada
-            </span>
           </div>
         </header>
 

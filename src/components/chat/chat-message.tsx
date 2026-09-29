@@ -100,17 +100,15 @@ export function ChatMessage({ msg, isStreaming, isLastMessage, onImageClick }: C
             />
           </div>
         ) : (
-          /* User Bubble — Glassmorphism pill */
+          /* User Bubble — Ultra minimal pill */
           <div className="
             w-fit max-w-[min(85vw,520px)]
-            bg-zinc-100 dark:bg-zinc-800/90
-            border border-zinc-200/60 dark:border-zinc-700/50
-            text-zinc-900 dark:text-zinc-100
+            bg-zinc-100 dark:bg-[#1A1A1A]
+            text-zinc-900 dark:text-zinc-200
             px-5 py-3.5
-            rounded-3xl rounded-tr-md
+            rounded-3xl rounded-tr-sm
             shadow-sm
             text-[15px] leading-relaxed
-            backdrop-blur-sm
           ">
             {msg.content}
           </div>
