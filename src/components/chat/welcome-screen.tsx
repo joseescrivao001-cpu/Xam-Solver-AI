@@ -7,6 +7,7 @@ import { BrainCircuit, Atom, Calculator, FlaskConical, Dna } from 'lucide-react'
 interface WelcomeScreenProps {
   notebookName?: string | null;
   onSuggestionClick: (text: string) => void;
+  children?: React.ReactNode;
 }
 
 const SUGGESTIONS = [
@@ -47,7 +48,7 @@ const SUGGESTIONS = [
  * Staggered Framer Motion entry, suggestion chips with
  * subject-coded color accents, clean glassmorphism.
  */
-export function WelcomeScreen({ notebookName, onSuggestionClick }: WelcomeScreenProps) {
+export function WelcomeScreen({ notebookName, onSuggestionClick, children }: WelcomeScreenProps) {
   const containerVariants = {
     hidden: {},
     show: { transition: { staggerChildren: 0.08 } },
@@ -62,10 +63,10 @@ export function WelcomeScreen({ notebookName, onSuggestionClick }: WelcomeScreen
       variants={containerVariants}
       initial="hidden"
       animate="show"
-      className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full pb-24 px-4 gap-6"
+      className="flex flex-col items-center justify-center max-w-3xl mx-auto w-full pt-12 pb-24 px-4 gap-8"
     >
       {/* Logo & Headline */}
-      <motion.div variants={itemVariants} className="text-center">
+      <motion.div variants={itemVariants} className="text-center w-full">
         <div className="relative inline-block mb-6">
           <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 dark:bg-indigo-500/20 flex items-center justify-center border border-indigo-500/20 dark:border-indigo-500/30">
             <BrainCircuit className="w-6 h-6 text-indigo-500" />
@@ -84,8 +85,17 @@ export function WelcomeScreen({ notebookName, onSuggestionClick }: WelcomeScreen
         </p>
       </motion.div>
 
+      {/* COMPOSER INJECTED HERE IN EMPTY STATE */}
+      {children ? (
+        <motion.div variants={itemVariants} className="w-full z-20">
+          {children}
+        </motion.div>
+      ) : (
+        <div className="h-28 w-full" />
+      )}
+
       {/* Suggestion Chips - Minimal Outline */}
-      <motion.div variants={itemVariants} className="w-full mt-4">
+      <motion.div variants={itemVariants} className="w-full mt-2">
         <div className="flex items-center justify-center gap-2 mb-4 text-xs font-medium text-zinc-400">
           Sugestões
         </div>

@@ -1176,9 +1176,15 @@ export default function ExamSolverGrand() {
   };
 
   // Chat Submission
+  // Chat Submission
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      if (!file.type.startsWith('image/')) {
+        setError("O chat no momento aceita apenas imagens (JPG, PNG, WEBP). Para PDFs, anexe-os dentro de um Caderno de Estudo.");
+        setIsAttachMenuOpen(false);
+        return;
+      }
       setImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => setImageBase64(reader.result as string);
@@ -2459,11 +2465,11 @@ export default function ExamSolverGrand() {
             </div>
 
             {/* ---------------- FLOATING INPUT AREA ---------------- */}
-            <div className={`left-0 right-0 w-full px-4 md:px-12 transition-all duration-700 z-30 flex flex-col items-center justify-end pointer-events-none ${messages.length === 0 ? 'relative pb-[15vh]' : 'absolute bottom-0 pb-8 bg-gradient-to-t from-white via-white/80 dark:from-[#0A0A0A] dark:via-[#0A0A0A]/80 to-transparent'}`}>
+            <div className={`left-0 right-0 w-full px-4 md:px-12 transition-all duration-700 z-30 flex flex-col items-center pointer-events-none ${messages.length === 0 ? 'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 mt-16 justify-center' : 'absolute bottom-0 pb-8 justify-end bg-gradient-to-t from-white via-white/80 dark:from-[#0A0A0A] dark:via-[#0A0A0A]/80 to-transparent'}`}>
               <div className="max-w-3xl w-full pointer-events-auto">
                 
                 {/* Input Container */}
-                <div className="relative bg-zinc-50 dark:bg-[#121212] border border-zinc-200 dark:border-zinc-800/80 rounded-3xl transition-all focus-within:border-zinc-300 dark:focus-within:border-zinc-700 flex flex-col shadow-sm">
+                <div className="relative bg-[#1A1A1A] dark:bg-[#121212] border border-zinc-200 dark:border-zinc-800/80 rounded-[28px] transition-all focus-within:border-zinc-300 dark:focus-within:border-zinc-700 flex flex-col shadow-lg">
                   
                   {/* Image Preview Area */}
                   <AnimatePresence>
@@ -2612,7 +2618,28 @@ export default function ExamSolverGrand() {
                   </div>
                 </div>
 
-                <p className="text-center text-[11px] text-zinc-400 mt-2">
+                {messages.length === 0 && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex flex-wrap items-center justify-center gap-4 sm:gap-8 mt-6"
+                  >
+                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200 transition">
+                      <Paperclip className="w-4 h-4" /> Anexar arquivo
+                    </button>
+                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200 transition">
+                      <ImageIcon className="w-4 h-4" /> Enviar imagem
+                    </button>
+                    <button onClick={handleDrivePicker} className="flex items-center gap-2 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200 transition">
+                      <Cloud className="w-4 h-4" /> Google Drive
+                    </button>
+                    <button onClick={startRecording} className="flex items-center gap-2 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200 transition">
+                      <Mic className="w-4 h-4" /> Usar voz
+                    </button>
+                  </motion.div>
+                )}
+
+                <p className={`text-center text-[11px] text-zinc-400 transition-all ${messages.length === 0 ? 'mt-8' : 'mt-2'}`}>
                   A IA pode cometer erros. Ao usar o ExamSolver, você concorda com nossos Termos e Política de privacidade.
                 </p>
               </div>
@@ -2684,13 +2711,6 @@ export default function ExamSolverGrand() {
                     <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-500 uppercase tracking-wider">
                       {(userPlan || 'free').toUpperCase()}
                     </span>
-                    <Button 
-                      size="sm" 
-                      onClick={() => setIsPricingOpen(true)}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-xl h-8 px-3"
-                    >
-                      Planos
-                    </Button>
                   </div>
                 </div>
 
