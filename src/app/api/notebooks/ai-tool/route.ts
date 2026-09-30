@@ -179,6 +179,7 @@ ${promptTask}
       }
     });
 
+    if (!res.body) return new Response(JSON.stringify({ error: "Sem resposta da IA." }), { status: 500 });
     return new Response(res.body.pipeThrough(transformStream), {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
