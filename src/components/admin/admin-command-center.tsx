@@ -445,7 +445,7 @@ export default function AdminCommandCenter() {
                   <span className="text-xs text-zinc-400">Roteamento Inteligente Multi-LLM</span>
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Uso equilibrado entre Google DeepMind (Flash para questões instantâneas e Pro para raciocínio profundo) e Meta LLaMA 3.3 via Groq Nuclear.
+                  Motor de Infer�ncia Neural operado nativamente pela Cerebras AI (Modelos open-source de alt�ssima velocidade).
                 </p>
 
                 <div className="space-y-3 pt-2">
@@ -799,7 +799,7 @@ export default function AdminCommandCenter() {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold text-white">Auditoria & Logs de IA</h3>
-                <p className="text-xs text-zinc-400">Acompanhe requisições de resolução, limites de cota (429) e failover para Groq.</p>
+                <p className="text-xs text-zinc-400">Acompanhe requisições de resolução, limites de cota (429) e desempenho da IA.</p>
               </div>
               <Button onClick={loadLogs} variant="outline" size="sm" className="rounded-xl text-xs flex items-center gap-1.5">
                 <RefreshCw className="w-3.5 h-3.5" /> Atualizar Logs

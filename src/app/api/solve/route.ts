@@ -3,6 +3,8 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse = require("pdf-parse");
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -90,6 +92,7 @@ export async function POST(req: Request) {
 
     let imageUrl: string | null = null;
     let isPdf = false;
+    let pdfExtractedText: string | null = null;
     let fileBuffer: ArrayBuffer | null = null;
 
     if (file) {
@@ -101,6 +104,12 @@ export async function POST(req: Request) {
       const base64Data = arrayBufferToBase64(fileBuffer);
       imageUrl = `data:${file.type};base64,${base64Data}`;
       isPdf = file.type === 'application/pdf';
+      if (isPdf) {
+        try {
+          const pdfData = await pdfParse(Buffer.from(fileBuffer));
+          pdfExtractedText = pdfData.text;
+        } catch { pdfExtractedText = "Erro ao ler PDF"; }
+      }
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -120,11 +129,8 @@ export async function POST(req: Request) {
         ]
       });
     } else {
-      const pdfNote = isPdf ? `[PDF enviado com ${Math.round((fileBuffer?.byteLength || 0) / 1024)}KB]\n` : '';
-      messages.push({
-        role: 'user',
-        content: `${pdfNote}${modePrefix}`
-      });
+      const pdfNote = isPdf ? `[CONTEÚDO DO PDF EXTRAÍDO]:\n${pdfExtractedText}\n\n` : '';
+    messages.push({ role: 'user', content: `${pdfNote}${modePrefix}` });
     }
 
     const cerebrasModel = (imageUrl && !isPdf) ? 'qwen-3.8-27b' : 'gpt-oss-120b';

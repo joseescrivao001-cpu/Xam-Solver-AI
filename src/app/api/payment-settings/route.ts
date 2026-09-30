@@ -62,13 +62,13 @@ export async function GET() {
           usd: proUsd,
           aoa: proAoa,
           formatted_aoa: proAoa.toLocaleString("pt-AO") + " Kz",
-          credits: "2.000 Créditos"
+          credits: "22.000 Cr�ditos"
         },
         ultra: {
           usd: ultraUsd,
           aoa: ultraAoa,
           formatted_aoa: ultraAoa.toLocaleString("pt-AO") + " Kz",
-          credits: "10.000 Créditos"
+          credits: "100.000 Cr�ditos"
         },
         premium: {
           usd: premiumUsd,
@@ -87,8 +87,8 @@ export async function GET() {
       iban: "",
       usd_to_aoa_rate: 950,
       plans: {
-        pro: { usd: 10, aoa: 9500, formatted_aoa: "9.500 Kz", credits: "2.000 Créditos" },
-        ultra: { usd: 19, aoa: 19000, formatted_aoa: "19.000 Kz", credits: "10.000 Créditos" },
+        pro: { usd: 10, aoa: 9500, formatted_aoa: "9.500 Kz", credits: "22.000 Cr�ditos" },
+        ultra: { usd: 19, aoa: 19000, formatted_aoa: "19.000 Kz", credits: "100.000 Cr�ditos" },
         premium: { usd: 39, aoa: 39000, formatted_aoa: "39.000 Kz", credits: "Ilimitado" }
       }
     });

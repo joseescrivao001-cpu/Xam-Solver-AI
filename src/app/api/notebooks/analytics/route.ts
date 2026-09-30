@@ -3,9 +3,6 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!);
 
 export async function GET(req: Request) {
   try {
@@ -35,23 +32,19 @@ export async function GET(req: Request) {
       .from("notebook_analytics")
       .select("*")
       .eq("notebook_id", notebook_id)
-      .eq("user_id", user.id)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .single();
 
-    if (error) {
-      console.error("Erro ao buscar analytics:", error);
+    if (error && error.code !== 'PGRST116') {
+      console.warn("[ANALYTICS_GET_ERROR]", error);
     }
 
-    return new Response(JSON.stringify({ analytics }), {
+    return new Response(JSON.stringify({ analytics: analytics || null }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Erro interno.";
-    console.error("GET Analytics Exception:", err);
-    return new Response(JSON.stringify({ error: message }), {
+  } catch (err) {
+    console.error("[ANALYTICS_GET_FATAL]", err);
+    return new Response(JSON.stringify({ error: "Erro interno." }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });
@@ -80,26 +73,12 @@ export async function POST(req: Request) {
       });
     }
 
-    // 1. Obter informações do Caderno
-    const { data: notebook } = await db
-      .from("notebooks")
-      .select("name, description")
-      .eq("id", notebook_id)
-      .single();
+    const { data: notebook } = await db.from("notebooks").select("name").eq("id", notebook_id).single();
+    const notebookName = notebook?.name || "Disciplina";
 
-    const notebookName = notebook?.name || "Ambiente de Estudo";
-
-    // 2. Coletar conversas vinculadas ao caderno
-    const { data: convs } = await db
-      .from("conversations")
-      .select("id, title")
-      .eq("notebook_id", notebook_id)
-      .order("created_at", { ascending: false })
-      .limit(15);
-
+    const { data: convs } = await db.from("conversations").select("id").eq("notebook_id", notebook_id);
     const convIds = (convs || []).map(c => c.id);
 
-    // 3. Coletar mensagens
     let messagesHistory = "";
     if (convIds.length > 0) {
       const { data: msgs } = await db
@@ -107,150 +86,92 @@ export async function POST(req: Request) {
         .select("role, content")
         .in("conversation_id", convIds)
         .order("created_at", { ascending: false })
-        .limit(35);
+        .limit(30);
 
       if (msgs && msgs.length > 0) {
-        messagesHistory = msgs
-          .reverse()
-          .map(m => `${m.role === 'user' ? 'Aluno' : 'IA'}: ${m.content.slice(0, 300)}`)
-          .join("\n---\n");
+        messagesHistory = msgs.reverse().map(m => `${m.role === 'user' ? 'Aluno' : 'IA'}: ${m.content.slice(0, 300)}`).join("\n---\n");
       }
     }
 
-    // 4. Coletar notas
-    const { data: notes } = await db
-      .from("notebook_notes")
-      .select("title, content")
-      .eq("notebook_id", notebook_id)
-      .limit(10);
+    const { data: materials } = await db.from("notebook_materials").select("title, extracted_text").eq("notebook_id", notebook_id).limit(5);
+    const materialsSummary = (materials || []).map(m => `[Material: ${m.title}]: ${m.extracted_text || 'Anexo'}`).join("\n");
 
-    const notesSummary = (notes || []).map(n => `[Nota: ${n.title}]\n${n.content.slice(0, 300)}`).join("\n\n");
+    const { data: notes } = await db.from("notebook_notes").select("title, content").eq("notebook_id", notebook_id).limit(5);
+    const notesSummary = (notes || []).map(n => `[Nota: ${n.title}]: ${n.content}`).join("\n");
 
-    // 5. Coletar materiais
-    const { data: materials } = await db
-      .from("notebook_materials")
-      .select("name, file_type, description")
-      .eq("notebook_id", notebook_id)
-      .limit(10);
-
-    const materialsSummary = (materials || []).map(m => `- ${m.name} (${m.file_type || 'material'})`).join("\n");
-
-    // Se não tiver dados suficientes ainda
-    if (!messagesHistory && !notesSummary && !materialsSummary) {
-      const emptyAnalytics = {
-        notebook_id,
-        user_id: user.id,
-        overall_score: 50,
-        mastered_topics: [
-          { topic: "Início do Caderno", reason: "Caderno recém-criado. Comece fazendo perguntas ou adicionando materiais." }
-        ],
-        review_topics: [],
-        critical_topics: [],
-        summary: `O caderno "${notebookName}" ainda não possui dados suficientes para uma análise aprofundada. Interaja com o assistente ou adicione materiais para gerar um diagnóstico completo.`,
-        recommendations: "Envie sua primeira dúvida ou adicione materiais/provas para a IA analisar seu nível de proficiência."
-      };
-
-      await db.from("notebook_analytics").upsert(emptyAnalytics, { onConflict: "notebook_id" });
-
-      return new Response(JSON.stringify({ analytics: emptyAnalytics }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      });
+    if (!messagesHistory && !materialsSummary && !notesSummary) {
+      const emptyAnalytics = { notebook_id, user_id: user.id, overall_score: 100, mastered_topics: [], review_topics: [], critical_topics: [] };
+      return new Response(JSON.stringify({ analytics: emptyAnalytics }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
 
-    // 6. Chamar IA Gemini para gerar diagnóstico estruturado
-    const model = genAI.getGenerativeModel({
-      model: "gemini-3.6-flash",
-    }, { apiVersion: "v1" });
+    const promptPayload = `Você é o Auditor Pedagógico de IA do ExamSolver AI.
+Sua missão é analisar o histórico do Caderno "${notebookName}" e produzir um DIAGNÓSTICO DE DOMÍNIO COGNITIVO.
 
-    const prompt = `Você é o Auditor Pedagógico de IA do ExamSolver AI.
-Sua missão é analisar todo o histórico de interações, notas e materiais do Caderno "${notebookName}" e produzir um DIAGNÓSTICO DE DOMÍNIO COGNITIVO estruturado.
+CONTEXTO:
+${materialsSummary}
+${notesSummary}
+${messagesHistory}
 
-CONTEXTO DO CADERNO:
-${materialsSummary ? `Materiais anexados:\n${materialsSummary}\n` : ''}
-${notesSummary ? `Notas do Aluno:\n${notesSummary}\n` : ''}
-${messagesHistory ? `Histórico de Conversas:\n${messagesHistory}\n` : ''}
-
-CRITÉRIOS DE AVALIAÇÃO:
-🟢 Verde (mastered_topics): Tópicos e conceitos que o aluno demonstrou bom entendimento, acertou ou avançou sem travar.
-🟡 Amarelo (review_topics): Conceitos em dúvida, hesitações ou tópicos que necessitam de consolidação e revisão.
-🔴 Vermelho (critical_topics): Dificuldades críticas, erros recorrentes, fórmulas ou passos esquecidos, confusões conceituais.
-Para cada tópico vermelho, você DEVE fornecer um 'action_plan' prático de como o aluno deve estudar para passar de Vermelho para Verde.
-
-Responda ESTRITAMENTE em formato JSON VÁLIDO (sem markdown de bloco code \`\`\`json, apenas o JSON puro):
+Responda ESTRITAMENTE em JSON puro:
 {
   "overall_score": 75,
-  "mastered_topics": [
-    {"topic": "Nome do tópico", "reason": "Por que está dominado"}
-  ],
-  "review_topics": [
-    {"topic": "Nome do tópico", "reason": "O que precisa revisar"}
-  ],
-  "critical_topics": [
-    {"topic": "Nome do tópico", "reason": "Qual a dificuldade exata", "action_plan": "Como passar para verde"}
-  ],
-  "summary": "Resumo pedagógico geral do estado do aluno neste caderno.",
-  "recommendations": "Plano de ação prioritário para os próximos estudos."
+  "mastered_topics": [{"topic": "Tópico", "reason": "Por que"}],
+  "review_topics": [{"topic": "Tópico", "reason": "Por que"}],
+  "critical_topics": [{"topic": "Tópico", "reason": "Problema", "action_plan": "Como melhorar"}]
 }`;
 
-    const result = await model.generateContent(prompt);
-    const textOutput = result.response.text();
+    const apiKey = process.env.CEREBRAS_API_KEY;
+    if (!apiKey) throw new Error("CEREBRAS_API_KEY não configurada");
 
-    // Limpar delimitadores se houver
-    let cleanJson = textOutput.trim();
-    if (cleanJson.startsWith("```json")) {
-      cleanJson = cleanJson.replace(/^```json\s*/, "").replace(/```\s*$/, "").trim();
-    } else if (cleanJson.startsWith("```")) {
-      cleanJson = cleanJson.replace(/^```\s*/, "").replace(/```\s*$/, "").trim();
+    const resIA = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey.trim()}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "llama3.1-70b",
+        messages: [{ role: "system", content: "You output only valid JSON." }, { role: "user", content: promptPayload }],
+        temperature: 0.2
+      })
+    });
+
+    if (!resIA.ok) throw new Error("Erro na Cerebras API");
+    const data = await resIA.json();
+    let textResponse = data.choices[0].message.content.trim();
+
+    if (textResponse.startsWith("```json")) {
+      textResponse = textResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
     }
 
-    let parsed;
-    try {
-      parsed = JSON.parse(cleanJson);
-    } catch {
-      console.error("Falha ao parsear JSON de analytics:", cleanJson);
-      parsed = {
-        overall_score: 65,
-        mastered_topics: [{ topic: "Tópicos Fundamentais", reason: "Demonstrado interesse e perguntas consistentes." }],
-        review_topics: [{ topic: "Revisão Geral", reason: "Recomenda-se aprofundar os exercícios do caderno." }],
-        critical_topics: [{ topic: "Fixação de Fórmulas", reason: "Prática necessária", action_plan: "Resolver 5 exercícios guiados." }],
-        summary: "Diagnóstico inicial gerado com base nas interações registradas.",
-        recommendations: "Continue praticando e enviando dúvidas detalhadas para refinar o diagnóstico."
-      };
-    }
+    const aiData = JSON.parse(textResponse);
 
-    const payloadToSave = {
-      notebook_id,
-      user_id: user.id,
-      overall_score: Math.min(100, Math.max(0, parseInt(parsed.overall_score || "70", 10))),
-      mastered_topics: parsed.mastered_topics || [],
-      review_topics: parsed.review_topics || [],
-      critical_topics: parsed.critical_topics || [],
-      summary: parsed.summary || "",
-      recommendations: parsed.recommendations || "",
-      updated_at: new Date().toISOString()
-    };
-
-    // Upsert em notebook_analytics
-    const { data: savedData, error: saveErr } = await db
+    const { data: upsertedData, error: upsertError } = await db
       .from("notebook_analytics")
-      .upsert(payloadToSave, { onConflict: "notebook_id" })
+      .upsert({
+        notebook_id,
+        user_id: user.id,
+        overall_score: aiData.overall_score || 0,
+        mastered_topics: aiData.mastered_topics || [],
+        review_topics: aiData.review_topics || [],
+        critical_topics: aiData.critical_topics || [],
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'notebook_id' })
       .select()
       .single();
 
-    if (saveErr) {
-      console.warn("Erro ao salvar notebook_analytics (tentando insert direto):", saveErr);
-      await db.from("notebook_analytics").insert(payloadToSave);
+    if (upsertError) {
+      console.error("[ANALYTICS_UPSERT_ERROR]", upsertError);
+      return new Response(JSON.stringify({ error: upsertError.message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
     }
 
-    return new Response(JSON.stringify({ analytics: savedData || payloadToSave }), {
+    return new Response(JSON.stringify({ analytics: upsertedData }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Erro interno no cálculo analítico.";
-    console.error("POST Analytics Exception:", err);
-    return new Response(JSON.stringify({ error: message }), {
+  } catch (err) {
+    console.error("[ANALYTICS_POST_FATAL]", err);
+    return new Response(JSON.stringify({ error: "Erro interno ao gerar analytics." }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });

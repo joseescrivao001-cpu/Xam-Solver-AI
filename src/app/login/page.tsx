@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { BrainCircuit, Sparkles, Mail, Lock, Loader2, ArrowLeft } from "lucide-react";
+import { BrainCircuit, Mail, Lock, Loader2, ArrowLeft } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -224,37 +224,49 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Right Side: Branding (Indigo/Violet Gradient with Waves/Circles) */}
-        <div className="w-full lg:w-[55%] relative overflow-hidden bg-gradient-to-br from-indigo-700 via-indigo-800 to-violet-900 flex flex-col justify-center items-center p-12 text-center">
+                {/* Right Side: Animated Student Grid Branding */}
+        <div className="hidden lg:flex w-[55%] relative overflow-hidden bg-black flex-col justify-center items-center p-12 text-center">
           
-          {/* Decorative shapes to simulate the "Wavy" cut and floating orbs */}
-          <div className="hidden lg:block absolute -left-32 top-[-10%] w-[300px] h-[120%] bg-white rounded-[50%] blur-[2px]" style={{ clipPath: 'ellipse(40% 50% at 0% 50%)' }} />
+          {/* Animated Image Grid Background */}
+          <div className="absolute inset-0 opacity-40">
+            <div className="grid grid-cols-3 gap-2 w-[150%] h-[150%] -ml-[25%] -mt-[25%] animate-[spin_60s_linear_infinite]">
+              {[
+                "https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&q=80&w=600", // students
+                "https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&q=80&w=600", // black student
+                "https://images.unsplash.com/photo-1515161318750-781d6122e367?auto=format&fit=crop&q=80&w=600", // asian student
+                "https://images.unsplash.com/photo-1427504494785-3a9ca7044f45?auto=format&fit=crop&q=80&w=600", // studying
+                "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&q=80&w=600", // diverse group
+                "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&q=80&w=600", // writing
+                "https://images.unsplash.com/photo-1524178232363-1fb2b075b655?auto=format&fit=crop&q=80&w=600", // female student
+                "https://images.unsplash.com/photo-1543269865-cbf427effbad?auto=format&fit=crop&q=80&w=600", // group laughing
+                "https://images.unsplash.com/photo-1513258496099-48168024aec0?auto=format&fit=crop&q=80&w=600", // library
+              ].map((src, i) => (
+                <div key={i} className="relative w-full h-full overflow-hidden rounded-xl">
+                  <img src={src} alt="Student" className="object-cover w-full h-full" />
+                </div>
+              ))}
+            </div>
+          </div>
           
-          <div className="absolute top-12 right-12 w-32 h-32 bg-pink-500/30 rounded-full blur-2xl animate-pulse" />
-          <div className="absolute bottom-20 left-20 w-40 h-40 bg-blue-500/30 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '2s' }} />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/80 to-transparent" />
 
           <div className="relative z-10 flex flex-col items-center">
             <div className="w-16 h-16 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center mb-6 shadow-xl border border-white/20">
               <BrainCircuit className="w-8 h-8 text-white" />
             </div>
             
-            <h1 className="text-3xl md:text-5xl font-black text-white mb-6 tracking-tight">
-              {isLogin ? "Que bom ver você!" : "Junte-se à Revolução"}
+            <h1 className="text-3xl md:text-5xl font-black text-white mb-6 tracking-tight drop-shadow-lg">
+              {isLogin ? "Que bom ver voc�!" : "Junte-se � Revolu��o"}
             </h1>
             
-            <p className="text-indigo-100 text-sm md:text-base max-w-sm leading-relaxed font-medium mb-10">
-              O Exam Solver AI analisa imagens de provas, reconhece equações e fornece resoluções com <strong>Precisão Absoluta</strong>. 
-              {isLogin ? " Entre para continuar de onde parou." : " Cadastre-se e ganhe 50 créditos iniciais gratuitos."}
+            <p className="text-zinc-300 text-sm md:text-base max-w-sm leading-relaxed font-medium mb-10 drop-shadow-md">
+              O Exam Solver AI analisa imagens de provas, reconhece equa��es e fornece resolu��es com <strong>Precis�o Absoluta</strong>. 
+              {isLogin ? " Entre para continuar de onde parou." : " Cadastre-se e ganhe 50 cr�ditos iniciais gratuitos."}
             </p>
-            
-            <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md px-5 py-2.5 rounded-full border border-white/20 shadow-lg">
-              <Sparkles className="w-4 h-4 text-yellow-300" />
-              <span className="text-xs font-semibold text-white tracking-wide uppercase">Desenvolvido com Tecnologia Cerebras AI</span>
-            </div>
           </div>
           
-          <div className="absolute bottom-6 text-xs font-medium text-indigo-300/60 z-10">
-            © {new Date().getFullYear()} Exam Solver AI by José Escrivão
+          <div className="absolute bottom-6 text-xs font-medium text-zinc-500 z-10">
+            � {new Date().getFullYear()} Exam Solver AI
           </div>
         </div>
 

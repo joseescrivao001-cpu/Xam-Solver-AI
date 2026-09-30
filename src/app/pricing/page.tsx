@@ -110,7 +110,7 @@ export default function PricingPage() {
             Poder de Elite com <span className="bg-gradient-to-r from-violet-400 via-indigo-300 to-amber-300 bg-clip-text text-transparent">Multi-LLM Engine</span>
           </h1>
           <p className="text-base sm:text-lg text-zinc-400 leading-relaxed">
-            Resolva exames, provas complexas e cálculos avançados com o cluster que integra Meta LLaMA 3.3 70B via Groq LPU, Google DeepMind e Roteador Neural Indestrutível com Failover automático.
+            Resolva exames, provas complexas e c�lculos avan�ados com o cluster que integra modelos open-source de �ltima gera��o via Cerebras LPU e Roteador Neural com Failover autom�tico.
           </p>
         </div>
 
@@ -204,13 +204,13 @@ export default function PricingPage() {
                   <div className="w-5 h-5 rounded-full bg-violet-500/20 flex items-center justify-center shrink-0">
                     <Check className="w-3 h-3 text-violet-400" />
                   </div>
-                  <span className="font-semibold text-violet-300">Multi-LLM: Meta LLaMA 3.3 + DeepMind</span>
+                  <span className="font-semibold text-violet-300">Multi-LLM: Cerebras Qwen + LLaMA 3.1</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="w-5 h-5 rounded-full bg-violet-500/20 flex items-center justify-center shrink-0">
                     <Check className="w-3 h-3 text-violet-400" />
                   </div>
-                  <span>Groq LPU de Ultra-Baixa Latência</span>
+                  <span>Cerebras CS-3 de Ultra-Baixa Lat�ncia</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="w-5 h-5 rounded-full bg-violet-500/20 flex items-center justify-center shrink-0">
@@ -263,7 +263,7 @@ export default function PricingPage() {
                   <div className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
                     <Check className="w-3 h-3 text-amber-400" />
                   </div>
-                  <span>Cluster Completo: Meta LLaMA 3.3 + DeepMind Pro + Groq</span>
+                  <span>Cluster Completo: Cerebras LLaMA 3.1 + Qwen + GPT-OSS</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
@@ -351,7 +351,7 @@ export default function PricingPage() {
             <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800/80">
               <h4 className="font-semibold text-white text-base mb-1.5">Quais inteligências artificiais compõem o sistema?</h4>
               <p className="text-sm text-zinc-400 leading-relaxed">
-                Utilizamos uma infraestrutura Multi-LLM corporativa que inclui Meta LLaMA 3.3 70B executado nos processadores Groq LPU de ultra-velocidade, Google DeepMind para raciocínio lógico avançado e um roteador inteligente de failover com redundância total.
+                Utilizamos uma infraestrutura Multi-LLM corporativa que inclui modelos de alt�ssima performance executados nos processadores Cerebras de ultra-velocidade, para racioc�nio l�gico avan�ado e um roteador inteligente de failover com redund�ncia total.
               </p>
             </div>
           </div>

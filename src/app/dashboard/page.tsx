@@ -221,7 +221,7 @@ export default function ExamSolverGrand() {
         // GUEST MODE
         const guestCreds = localStorage.getItem("guestCredits");
         setCredits(guestCreds ? parseInt(guestCreds) : 5);
-        setUserPlan("free");
+        setUserPlan(user ? 'free' : null);
         setIsProfileLoaded(true);
         loadNotebooksState("guest");
         setIsDataLoading(false);
@@ -241,7 +241,7 @@ export default function ExamSolverGrand() {
             if (profile.plan_type) {
               setUserPlan(profile.plan_type as 'free' | 'pro' | 'ultra' | 'premium');
             } else {
-              setUserPlan("free");
+              setUserPlan(user ? 'free' : null);
             }
             if (profile.is_admin) {
               setIsAdmin(true);
@@ -1531,7 +1531,7 @@ export default function ExamSolverGrand() {
                               <div>
                                 <p className="font-medium text-xs flex items-center gap-1">
                                   Pro (GPT-5.6)
-                                  {userPlan === 'free' && <Lock className="w-3 h-3 text-zinc-400" />}
+                                  {(userPlan === 'free' || !userPlan) && <Lock className="w-3 h-3 text-zinc-400" />}
                                 </p>
                                 <p className="text-[10px] text-zinc-500">Para questões complexas</p>
                               </div>
@@ -1790,7 +1790,7 @@ export default function ExamSolverGrand() {
                     <div className="flex items-center gap-2">
                       <Sparkles className={`w-3.5 h-3.5 ${userPlan === 'premium' ? 'text-amber-500' : 'text-zinc-400'}`} />
                       <span className="text-[12px] font-medium text-zinc-700 dark:text-zinc-300">
-                        Plano {userPlan === 'premium' ? 'VIP' : userPlan === 'pro' ? 'Pro' : 'Free'}
+                        Plano {userPlan === 'premium' ? 'VIP' : userPlan === 'ultra' ? 'Ultra' : userPlan === 'pro' ? 'Pro' : userPlan === 'free' ? 'Free' : 'Visitante'}
                       </span>
                     </div>
                     <ChevronDown className="w-3.5 h-3.5 opacity-0 group-hover:opacity-50 transition -rotate-90" />
@@ -2127,7 +2127,7 @@ export default function ExamSolverGrand() {
                             </h3>
                           </div>
                           <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-medium hidden sm:inline">
-                            Alimentado por Agent Router & Gemini
+                            Alimentado por Roteador Neural & Cerebras LPU
                           </span>
                         </div>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">

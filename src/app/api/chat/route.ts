@@ -165,6 +165,7 @@ export async function POST(req: Request) {
 
     const userMessageContent = text || "Imagem enviada";
     let imageUrl: string | null = null;
+    let pdfExtractedText: string | null = null; // eslint-disable-line prefer-const
     let isPdf = false;
     let buffer: ArrayBuffer | null = null;
 
@@ -239,10 +240,9 @@ export async function POST(req: Request) {
         ]
       });
     } else if (isPdf) {
-      // PDF: enviar como texto com instrução clara para a IA
       openAiMessages.push({
-        role: 'user',
-        content: `[ARQUIVO PDF ENVIADO PELO USUÁRIO]\n\nO usuário enviou um PDF com ${Math.round((buffer?.byteLength || 0) / 1024)}KB. Por favor, analise e responda a pergunta:\n\nPergunta: ${text || 'Analise o conteúdo deste documento e resolva as questões presentes.'}\n\nNota: Como o processamento direto de PDF não está disponível neste modo, responda com base na pergunta do usuário e peça para ele copiar o texto relevante do PDF se necessário.`
+        role: "user",
+        content: `[CONTEÚDO DO PDF EXTRAÍDO]:\n\n${pdfExtractedText}\n\nPergunta do Usuário: ${text || "Resolva as questões presentes no documento."}`
       });
     } else {
       openAiMessages.push({
