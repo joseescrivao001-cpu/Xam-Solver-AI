@@ -165,14 +165,17 @@ export async function POST(req: Request) {
 
     const userMessageContent = text || "Imagem enviada";
     let imageUrl: string | null = null;
+    let isPdf = false;
+    let buffer: ArrayBuffer | null = null;
 
     if (file) {
-      const validMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+      const validMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+      isPdf = file.type === 'application/pdf';
       if (!validMimeTypes.includes(file.type)) {
-        return new Response(JSON.stringify({ error: "Formato inválido. Use JPG, PNG ou WEBP." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: "Formato inválido. Use JPG, PNG, WEBP ou PDF." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
       }
 
-      const buffer = await file.arrayBuffer();
+      buffer = await file.arrayBuffer();
       const base64Data = arrayBufferToBase64(buffer);
       imageUrl = `data:${file.type};base64,${base64Data}`;
     }
@@ -227,13 +230,19 @@ export async function POST(req: Request) {
       }
     }
 
-    if (imageUrl) {
+    if (imageUrl && !isPdf) {
       openAiMessages.push({
         role: 'user',
         content: [
           { type: 'text', text: `Pergunta: ${text || 'Resolva esta questão analiticamente.'}` },
           { type: 'image_url', image_url: { url: imageUrl } }
         ]
+      });
+    } else if (isPdf) {
+      // PDF: enviar como texto com instrução clara para a IA
+      openAiMessages.push({
+        role: 'user',
+        content: `[ARQUIVO PDF ENVIADO PELO USUÁRIO]\n\nO usuário enviou um PDF com ${Math.round((buffer?.byteLength || 0) / 1024)}KB. Por favor, analise e responda a pergunta:\n\nPergunta: ${text || 'Analise o conteúdo deste documento e resolva as questões presentes.'}\n\nNota: Como o processamento direto de PDF não está disponível neste modo, responda com base na pergunta do usuário e peça para ele copiar o texto relevante do PDF se necessário.`
       });
     } else {
       openAiMessages.push({
@@ -242,8 +251,8 @@ export async function POST(req: Request) {
       });
     }
 
-    // Quando há imagem, usar sempre o modelo com maior capacidade visual
-    const cerebrasModel = imageUrl ? 'qwen-3.8-27b' : resolveModelId(targetModel);
+    // Quando há imagem real (não PDF), usar sempre o modelo com maior capacidade visual
+    const cerebrasModel = (imageUrl && !isPdf) ? 'qwen-3.8-27b' : resolveModelId(targetModel);
 
     const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
       method: 'POST',

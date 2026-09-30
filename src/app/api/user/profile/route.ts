@@ -40,7 +40,7 @@ export async function GET() {
         .insert({
           id: user.id,
           email: user.email,
-          credits_balance: isOwner ? 1000000 : 5,
+          credits_balance: isOwner ? 1000000 : 50,
           plan_type: isOwner ? "premium" : "free",
           is_admin: isOwner,
           avatar_url: googleAvatar,

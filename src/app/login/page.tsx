@@ -244,12 +244,12 @@ export default function LoginPage() {
             
             <p className="text-indigo-100 text-sm md:text-base max-w-sm leading-relaxed font-medium mb-10">
               O Exam Solver AI analisa imagens de provas, reconhece equações e fornece resoluções com <strong>Precisão Absoluta</strong>. 
-              {isLogin ? " Entre para continuar de onde parou." : " Cadastre-se e ganhe 5 créditos iniciais gratuitos."}
+              {isLogin ? " Entre para continuar de onde parou." : " Cadastre-se e ganhe 50 créditos iniciais gratuitos."}
             </p>
             
             <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md px-5 py-2.5 rounded-full border border-white/20 shadow-lg">
               <Sparkles className="w-4 h-4 text-yellow-300" />
-              <span className="text-xs font-semibold text-white tracking-wide uppercase">Desenvolvido com Tecnologia Gemini</span>
+              <span className="text-xs font-semibold text-white tracking-wide uppercase">Desenvolvido com Tecnologia Cerebras AI</span>
             </div>
           </div>
           

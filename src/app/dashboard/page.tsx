@@ -220,7 +220,7 @@ export default function ExamSolverGrand() {
       if (!user) {
         // GUEST MODE
         const guestCreds = localStorage.getItem("guestCredits");
-        setCredits(guestCreds ? parseInt(guestCreds) : 2);
+        setCredits(guestCreds ? parseInt(guestCreds) : 5);
         setUserPlan("free");
         setIsProfileLoaded(true);
         loadNotebooksState("guest");

@@ -43,8 +43,8 @@ export async function GET() {
     }
 
     // Calcular valores dos planos em Kwanza em tempo real
-    const proUsd = 10;
-    const ultraUsd = 19;
+    const proUsd = 5;
+    const ultraUsd = 10;
     const premiumUsd = 39;
     const proAoa = Math.round(proUsd * liveRate);
     const ultraAoa = Math.round(ultraUsd * liveRate);

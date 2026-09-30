@@ -26,7 +26,7 @@ interface PaymentSettingsData {
 export default function PricingPage() {
   const supabase = createClient();
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
-  const [currentPlan, setCurrentPlan] = useState<string>("pro");
+  const [currentPlan, setCurrentPlan] = useState<string>("free");
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
   const [paymentData, setPaymentData] = useState<PaymentSettingsData | null>(null);
 

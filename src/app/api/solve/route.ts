@@ -1,33 +1,47 @@
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
-import { Buffer } from "node:buffer";
-import { createClient } from "@/lib/supabase/server";
-import { GoogleGenerativeAI, Part, DynamicRetrievalMode } from "@google/generative-ai";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!);
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
 
-const SYSTEM_INSTRUCTION = `Você é o "Exam Solver AI", um Especialista Acadêmico supremo de resolução de provas.
-Seu objetivo é resolver a questão da imagem ou texto com precisão matemática e lógica impecável (Protocolo Zero Alucinações).
+function getApiKey(): string {
+  const key = process.env.CEREBRAS_API_KEY;
+  return key && typeof key === 'string' ? key.trim() : '';
+}
 
-Processo: Analisar Imagem -> Montar Equações/Lógica -> Verificar Alternativas -> Validar Resultado.
+const SYSTEM_INSTRUCTION = `Você é o Exam Solver AI, especialista em resolução de provas e questões acadêmicas STEM.
 
-Formate sua resposta EXATAMENTE com os seguintes cabeçalhos Markdown:
+### 🌍 IDIOMA OBRIGATÓRIO
+SEMPRE responda em Português Brasileiro. Nunca use outro idioma.
 
+### 🖼️ PROCESSAMENTO DE IMAGENS E PDFs
+Quando uma imagem ou PDF for enviado, analise completamente o conteúdo.
+
+### 📏 FORMATAÇÃO KaTeX
+- Fórmulas inline: $formula$
+- Equações em bloco: $$formula$$
+
+### ✍️ ESTRUTURA DA RESPOSTA
 ### [RESPOSTA]
-(Sua resposta final e direta. Alternativa correta e texto)
+(Sua resposta final e direta)
 
 ### [EXPLICAÇÃO]
-(Seu raciocínio passo a passo detalhado)
+(Raciocínio passo a passo detalhado)
 
 ### [VERIFICAÇÃO]
-(A prova real ou por que as alternativas erradas estão incorretas)
+(Prova do resultado ou por que alternativas erradas estão incorretas)
 
 ### [CONFIANÇA]
-(Exemplo: 100%)
-
-Seja conciso no raciocínio e OBRIGATÓRIO entregar a RESPOSTA FINAL no formato [LETRA] - [TEXTO]. Se você não entregar a resposta final, a tarefa será considerada FALHA.`;
+(Ex: 95%)`;
 
 export async function POST(req: Request) {
   try {
@@ -38,7 +52,10 @@ export async function POST(req: Request) {
       return new Response(JSON.stringify({ error: "Não autorizado." }), { status: 401, headers: { 'Content-Type': 'application/json' } });
     }
 
-    const { data: profile } = await supabase
+    const serviceClient = createServiceClient();
+    const db = serviceClient || supabase;
+
+    const { data: profile } = await db
       .from("profiles")
       .select("credits_balance, plan_type")
       .eq("id", user.id)
@@ -46,7 +63,6 @@ export async function POST(req: Request) {
 
     const userPlan = profile?.plan_type || 'free';
 
-    // Plano Premium possui acesso ILIMITADO (sem travas de saldo e sem dedução)
     if (userPlan !== 'premium' && (!profile || profile.credits_balance < 1)) {
       return new Response(JSON.stringify({ error: "Créditos insuficientes. Faça upgrade para continuar." }), { status: 402, headers: { 'Content-Type': 'application/json' } });
     }
@@ -55,204 +71,143 @@ export async function POST(req: Request) {
     const mode = formData.get("mode") as string;
     const text = formData.get("text") as string;
     const file = formData.get("file") as File | null;
+
     if ((mode === 'dificil' || mode === 'pro') && userPlan !== 'ultra' && userPlan !== 'premium') {
       return new Response(JSON.stringify({
         error: "UPGRADE_REQUIRED",
-        message: "O modo Difícil / Raciocínio Avançado é exclusivo dos planos Ultra e Premium."
-      }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/json' }
-      });
+        message: "O modo Difícil é exclusivo dos planos Ultra e Premium."
+      }), { status: 403, headers: { 'Content-Type': 'application/json' } });
     }
 
     if (!file && !text) {
       return new Response(JSON.stringify({ error: "Forneça uma imagem ou texto." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
-    const promptParts: Part[] = [];
-    
-    let customPrompt = `MODO: ${mode?.toUpperCase() || 'ESTUDO'}. \n`;
-    if (text) customPrompt += `\nTexto adicional da questão: ${text}`;
-    promptParts.push({ text: customPrompt });
-    
-    let groqImageUrl = null;
-
-    if (file) {
-      const validMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
-      if (!validMimeTypes.includes(file.type)) {
-        return new Response(JSON.stringify({ error: "Formato inválido. Use JPG, PNG ou WEBP." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
-      }
-
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const base64Data = buffer.toString("base64");
-      promptParts.push({
-        inlineData: {
-          data: base64Data,
-          mimeType: file.type,
-        },
-      });
-      groqImageUrl = `data:${file.type};base64,${base64Data}`;
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: "Configuração do servidor incompleta." }), { status: 503, headers: { 'Content-Type': 'application/json' } });
     }
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        // TTFB Hack
-        controller.enqueue(new TextEncoder().encode(" "));
+    let imageUrl: string | null = null;
+    let isPdf = false;
+    let fileBuffer: ArrayBuffer | null = null;
 
-        try {
-          const geminiModels = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          let result: any = null;
-          let finalResponseText = "";
-          let usedGroq = false;
-          
-          for (const modelName of geminiModels) {
+    if (file) {
+      const validMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+      if (!validMimeTypes.includes(file.type)) {
+        return new Response(JSON.stringify({ error: "Formato inválido. Use JPG, PNG, WEBP ou PDF." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      }
+      fileBuffer = await file.arrayBuffer();
+      const base64Data = arrayBufferToBase64(fileBuffer);
+      imageUrl = `data:${file.type};base64,${base64Data}`;
+      isPdf = file.type === 'application/pdf';
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const messages: any[] = [
+      { role: 'system', content: SYSTEM_INSTRUCTION }
+    ];
+
+    let modePrefix = `MODO: ${mode?.toUpperCase() || 'ESTUDO'}.\n`;
+    if (text) modePrefix += `\nQuestão: ${text}`;
+
+    if (imageUrl && !isPdf) {
+      messages.push({
+        role: 'user',
+        content: [
+          { type: 'text', text: modePrefix },
+          { type: 'image_url', image_url: { url: imageUrl } }
+        ]
+      });
+    } else {
+      const pdfNote = isPdf ? `[PDF enviado com ${Math.round((fileBuffer?.byteLength || 0) / 1024)}KB]\n` : '';
+      messages.push({
+        role: 'user',
+        content: `${pdfNote}${modePrefix}`
+      });
+    }
+
+    const cerebrasModel = (imageUrl && !isPdf) ? 'qwen-3.8-27b' : 'gpt-oss-120b';
+
+    const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'cerebras-cloud-sdk/typescript/1.0.0'
+      },
+      body: JSON.stringify({
+        model: cerebrasModel,
+        messages,
+        stream: true,
+        temperature: 0.2
+      })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("[SOLVE] Cerebras Error:", errText);
+      return new Response(JSON.stringify({ error: "Erro na IA. Tente novamente." }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    if (!res.body) {
+      return new Response(JSON.stringify({ error: "Corpo de resposta vazio." }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    let fullText = "";
+    let sseBuffer = "";
+
+    const transformStream = new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        sseBuffer += new TextDecoder("utf-8").decode(chunk);
+        const lines = sseBuffer.split("\n");
+        sseBuffer = lines.pop() || "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed === "data: [DONE]") continue;
+          if (trimmed.startsWith("data: ")) {
             try {
-              const model = genAI.getGenerativeModel(
-                {
-                  model: modelName,
-                  systemInstruction: SYSTEM_INSTRUCTION,
-                  tools: [
-                    {
-                      googleSearchRetrieval: {
-                        dynamicRetrievalConfig: {
-                          mode: DynamicRetrievalMode.MODE_DYNAMIC,
-                          dynamicThreshold: 0.3,
-                        },
-                      },
-                    },
-                  ],
-                },
-                { apiVersion: 'v1' }
-              );
-
-              result = await model.generateContentStream({
-                contents: [{ role: "user", parts: promptParts }],
-                generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
-              });
-              break; 
-            } catch (err: unknown) {
-              const errMsg = err instanceof Error ? err.message : String(err);
-              console.log(`[Rodízio] ${modelName} com Grounding falhou: ${errMsg}. Tentando fallback sem tools na v1...`);
-              try {
-                const modelFallback = genAI.getGenerativeModel(
-                  {
-                    model: modelName,
-                    systemInstruction: SYSTEM_INSTRUCTION,
-                  },
-                  { apiVersion: 'v1' }
-                );
-                result = await modelFallback.generateContentStream({
-                  contents: [{ role: "user", parts: promptParts }],
-                  generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
-                });
-                break;
-              } catch (fallbackErr) {
-                console.log(`[Rodízio] ${modelName} fallback v1 falhou: ${fallbackErr}. Tentando próximo...`);
-                continue;
+              const json = JSON.parse(trimmed.slice(6));
+              const delta = json.choices?.[0]?.delta?.content || "";
+              if (delta) {
+                fullText += delta;
+                controller.enqueue(new TextEncoder().encode(delta));
               }
-            }
+            } catch { /* fragmento parcial */ }
           }
-
-          if (!result && process.env.GROQ_API_KEY) {
-             usedGroq = true;
-             console.warn("[FAILOVER] Tier 1 e 2 do Google falharam. Usando GROQ como Tier Nuclear.");
-             
-             let groqContent = text || "Responda a questão.";
-             if (groqImageUrl) {
-                groqContent = `[IMAGEM ENVIADA PELO USUÁRIO (NÃO PROCESSADA)]: ${text || 'Descreva a resposta.'}`;
-             }
-
-             const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-               method: "POST",
-               headers: {
-                 "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-                 "Content-Type": "application/json"
-               },
-               body: JSON.stringify({
-                 model: "openai/gpt-oss-120b",
-                 messages: [
-                   { role: "system", content: SYSTEM_INSTRUCTION },
-                   { role: "user", content: groqContent }
-                 ],
-                 temperature: 0.2,
-                 max_tokens: 8192,
-                 stream: true
-               })
-             });
-
-             if (!groqRes.ok) throw new Error("Groq fallback failed");
-             
-             const reader = groqRes.body?.getReader();
-             const decoder = new TextDecoder("utf-8");
-             if (reader) {
-                let sseBuffer = "";
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-                  sseBuffer += decoder.decode(value, { stream: true });
-                  const lines = sseBuffer.split('\n');
-                  sseBuffer = lines.pop() || "";
-                  
-                  for (const line of lines) {
-                    const trimmed = line.trim();
-                    if (trimmed.startsWith('data: ') && trimmed !== 'data: [DONE]') {
-                      try {
-                        const data = JSON.parse(trimmed.slice(6));
-                        const content = data.choices?.[0]?.delta?.content || "";
-                        if (content) {
-                          finalResponseText += content;
-                          controller.enqueue(new TextEncoder().encode(content));
-                        }
-                      } catch(e) { console.error(e); }
-                    }
-                  }
-                }
-             }
-          }
-
-          if (!usedGroq && result) {
-            for await (const chunk of result.stream) {
-              const chunkText = chunk.text();
-              finalResponseText += chunkText;
-              controller.enqueue(new TextEncoder().encode(chunkText));
-            }
-          }
-
-          // Validação de entrega útil
-          if (!finalResponseText || finalResponseText.trim().length < 5) {
-            controller.enqueue(new TextEncoder().encode("\n\n**[SISTEMA]: A IA não gerou uma resposta válida. Crédito NÃO deduzido.**"));
-            controller.close();
-            return;
-          }
-
-          const { error: insertError } = await supabase.from("exams").insert({
+        }
+      },
+      async flush() {
+        if (fullText.trim().length > 5 && profile) {
+          const { error: examErr } = await db.from("exams").insert({
             user_id: user.id,
-            question_text: text || "Imagem enviada",
+            question_text: text || "Arquivo enviado",
             mode: mode || "estudo",
-            answer_json: { response: finalResponseText }
+            answer_json: { response: fullText }
           });
+          if (examErr) console.warn("[SOLVE] Erro ao salvar exam:", examErr);
 
-          if (!insertError && userPlan !== 'premium' && profile) {
-            await supabase.from("profiles").update({ credits_balance: Math.max(0, profile.credits_balance - 1) }).eq("id", user.id);
+          if (userPlan !== 'premium') {
+            const { error: creditErr } = await db
+              .from("profiles")
+              .update({ credits_balance: Math.max(0, profile.credits_balance - 1) })
+              .eq("id", user.id);
+            if (creditErr) console.warn("[SOLVE] Erro ao deduzir crédito:", creditErr);
           }
-
-          controller.close();
-        } catch (err) {
-          const errorMsg = err instanceof Error ? err.message : String(err);
-          controller.enqueue(new TextEncoder().encode(`\n\n**[FALHA NA INTELIGÊNCIA ARTIFICIAL]:** ${errorMsg}\n\n*Nenhum crédito foi cobrado.*`));
-          controller.close();
         }
       }
     });
 
-    return new Response(stream, {
+    return new Response(res.body.pipeThrough(transformStream), {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Transfer-Encoding': 'chunked'
       }
     });
+
   } catch (error: unknown) {
+    console.error("[SOLVE] Fatal Error:", error);
     const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
     return new Response(JSON.stringify({ error: errorMessage }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
