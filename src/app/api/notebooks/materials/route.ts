@@ -77,7 +77,7 @@ export async function POST(req: Request) {
               "Content-Type": "application/json"
             },
             body: JSON.stringify({
-              model: "llama3.2-90b-vision-instruct",
+              model: "qwen-3.8-27b",
               messages: [
                 {
                   role: "user",

@@ -134,8 +134,8 @@ export async function POST(req: Request) {
     messages.push({ role: 'user', content: `${pdfNote}${modePrefix}` });
     }
 
-    let cerebrasModel = resolveModelId("llama3.1-70b");
-    if (imageUrl) cerebrasModel = "llama3.2-90b-vision-instruct";
+    let cerebrasModel = resolveModelId("gpt-oss-120b");
+    if (imageUrl) cerebrasModel = "qwen-3.8-27b";
 
     const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
       method: 'POST',

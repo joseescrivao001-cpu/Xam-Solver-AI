@@ -131,7 +131,7 @@ Responda ESTRITAMENTE em JSON puro:
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: resolveModelId("llama3.1-70b"),
+        model: resolveModelId("gpt-oss-120b"),
         messages: [{ role: "system", content: "You output only valid JSON." }, { role: "user", content: promptPayload }],
         temperature: 0.2
       })

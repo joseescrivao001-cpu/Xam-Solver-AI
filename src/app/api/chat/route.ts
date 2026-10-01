@@ -287,7 +287,7 @@ export async function POST(req: Request) {
     // Quando há imagem real, usar sempre o modelo com maior capacidade visual
     let cerebrasModel = resolveModelId(targetModel);
     if (imageUrl) {
-      cerebrasModel = "llama3.2-90b-vision-instruct";
+      cerebrasModel = "qwen-3.8-27b";
     }
 
     const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
