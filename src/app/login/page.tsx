@@ -256,17 +256,17 @@ export default function LoginPage() {
             </div>
             
             <h1 className="text-3xl md:text-5xl font-black text-white mb-6 tracking-tight drop-shadow-lg">
-              {isLogin ? "Que bom ver voc�!" : "Junte-se � Revolu��o"}
+              {isLogin ? "Que bom ver você!" : "Junte-se à Revolução"}
             </h1>
             
             <p className="text-zinc-300 text-sm md:text-base max-w-sm leading-relaxed font-medium mb-10 drop-shadow-md">
-              O Exam Solver AI analisa imagens de provas, reconhece equa��es e fornece resolu��es com <strong>Precis�o Absoluta</strong>. 
-              {isLogin ? " Entre para continuar de onde parou." : " Cadastre-se e ganhe 50 cr�ditos iniciais gratuitos."}
+              O Exam Solver AI analisa imagens de provas, reconhece equações e fornece resoluções com <strong>Precisão Absoluta</strong>. 
+              {isLogin ? " Entre para continuar de onde parou." : " Cadastre-se e ganhe 50 créditos iniciais gratuitos."}
             </p>
           </div>
           
           <div className="absolute bottom-6 text-xs font-medium text-zinc-500 z-10">
-            � {new Date().getFullYear()} Exam Solver AI
+            © {new Date().getFullYear()} Exam Solver AI
           </div>
         </div>
 

@@ -1,3 +1,4 @@
+import { resolveModelId } from "@/lib/models";
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
@@ -133,7 +134,8 @@ export async function POST(req: Request) {
     messages.push({ role: 'user', content: `${pdfNote}${modePrefix}` });
     }
 
-    const cerebrasModel = (imageUrl && !isPdf) ? 'qwen-3.8-27b' : 'gpt-oss-120b';
+    let cerebrasModel = resolveModelId("llama3.1-70b");
+    if (imageUrl) cerebrasModel = "llama3.2-90b-vision-instruct";
 
     const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
       method: 'POST',

@@ -79,9 +79,9 @@ export async function GET() {
         approvedProofs: approvedCount,
         totalConversations: totalChats || 0,
         modelDistribution: [
-          { name: "Cerebras Qwen 2.5 (An�lise Visual)", share: 55, color: "emerald" },
-          { name: "Cerebras LLaMA 3.1 70B (Racioc�nio)", share: 30, color: "violet" },
-          { name: "Meta LLaMA 3.3 (Groq Nuclear)", share: 15, color: "indigo" }
+          { name: "Cerebras LLaMA 3.2 90B Vision (OCR/Imagens)", share: 55, color: "emerald" },
+          { name: "Cerebras LLaMA 3.1 70B (Racioc�nio R�pido)", share: 30, color: "violet" },
+          { name: "Cerebras LLaMA 3.3 70B (Matem�tica Complexa)", share: 15, color: "indigo" }
         ]
       }
     });

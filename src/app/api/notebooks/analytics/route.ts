@@ -1,3 +1,4 @@
+import { resolveModelId } from "@/lib/models";
 export const runtime = 'edge';
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
@@ -130,7 +131,7 @@ Responda ESTRITAMENTE em JSON puro:
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "llama3.1-70b",
+        model: resolveModelId("llama3.1-70b"),
         messages: [{ role: "system", content: "You output only valid JSON." }, { role: "user", content: promptPayload }],
         temperature: 0.2
       })

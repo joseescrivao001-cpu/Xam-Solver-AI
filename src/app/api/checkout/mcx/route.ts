@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     const serviceClient = createServiceClient();
     const dbClient = serviceClient || supabase;
 
-    const defaultAmount = plan_type === 'pro' ? '9.500 Kz' : plan_type === 'ultra' ? '19.000 Kz' : '39.000 Kz';
+    const defaultAmount = amount || (plan_type === 'pro' ? '5 USD' : plan_type === 'ultra' ? '10 USD' : '39 USD');
 
     // Registrar o comprovativo de pagamento
     const { data: proof, error: insertError } = await dbClient

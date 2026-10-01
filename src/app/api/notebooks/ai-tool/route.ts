@@ -1,3 +1,4 @@
+import { resolveModelId } from "@/lib/models";
 export const runtime = 'edge';
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
@@ -130,7 +131,7 @@ ${promptTask}
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "llama3.1-70b",
+        model: resolveModelId("llama3.1-70b"),
         messages: [
           { role: "system", content: `Você é o Tutor de Estudos Especialista do ExamSolver AI para a disciplina de ${notebookName}. Você tem acesso total ao ecossistema e histórico do caderno do aluno. Responda em tom acadêmico encorajador, com rigor conceitual e formatação Markdown/LaTeX impecável.` },
           { role: "user", content: contextPayload }

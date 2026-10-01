@@ -211,6 +211,39 @@ export async function POST(req: Request) {
       { role: 'system', content: SYSTEM_INSTRUCTION }
     ];
 
+    if (!isGuest && notebookId) {
+      const { data: materials } = await db
+        .from("notebook_materials")
+        .select("title, file_type, extracted_text")
+        .eq("notebook_id", notebookId);
+      
+      const { data: notes } = await db
+        .from("notebook_notes")
+        .select("title, content")
+        .eq("notebook_id", notebookId);
+
+      let contextStr = "CONTEXTO DO CADERNO DE ESTUDOS:\n";
+      if (materials && materials.length > 0) {
+        contextStr += "MATERIAIS ANEXADOS:\n";
+        materials.forEach(m => {
+          contextStr += `[Material: ${m.title}]: ${m.extracted_text || "Documento vazio"}\n\n`;
+        });
+      }
+      if (notes && notes.length > 0) {
+        contextStr += "ANOTAÇÕES DO ALUNO:\n";
+        notes.forEach(n => {
+          contextStr += `[Nota: ${n.title}]: ${n.content}\n\n`;
+        });
+      }
+      
+      if (materials?.length || notes?.length) {
+        openAiMessages.push({
+          role: "system",
+          content: contextStr
+        });
+      }
+    }
+
     if (!isGuest && conversationId && conversationId !== "guest") {
       const { data: previousMessages } = await db
         .from("messages")
@@ -251,8 +284,11 @@ export async function POST(req: Request) {
       });
     }
 
-    // Quando há imagem real (não PDF), usar sempre o modelo com maior capacidade visual
-    const cerebrasModel = (imageUrl && !isPdf) ? 'qwen-3.8-27b' : resolveModelId(targetModel);
+    // Quando há imagem real, usar sempre o modelo com maior capacidade visual
+    let cerebrasModel = resolveModelId(targetModel);
+    if (imageUrl) {
+      cerebrasModel = "llama3.2-90b-vision-instruct";
+    }
 
     const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
       method: 'POST',

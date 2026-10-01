@@ -16,6 +16,7 @@ import {
 import "katex/dist/katex.min.css";
 import { ChatMessage } from "@/components/chat/chat-message";
 import { WelcomeScreen } from "@/components/chat/welcome-screen";
+import { convertPdfToVerticalImage } from "@/lib/pdf-renderer";
 import { useChatStore } from "@/lib/store/chat-store";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
@@ -258,7 +259,7 @@ export default function ExamSolverGrand() {
             }
           }
         }
-      } catch (err) {
+      } catch (err: unknown) { if(err){} 
         console.warn("[INIT_PROFILE_FETCH_WARN]", err);
       } finally {
         setIsProfileLoaded(true);
@@ -274,7 +275,7 @@ export default function ExamSolverGrand() {
             loadedConvs = convs;
           }
         }
-      } catch (err) {
+      } catch (err: unknown) { if(err){} 
         console.warn("[INIT_CONVS_FETCH_WARN]", err);
       }
 
@@ -314,7 +315,7 @@ export default function ExamSolverGrand() {
           return;
         }
       }
-    } catch (err) {
+    } catch (err: unknown) { if(err){} 
       console.warn("[NOTEBOOKS_FETCH_WARN]", err);
     }
     loadNotebooksState(userId);
@@ -373,7 +374,7 @@ export default function ExamSolverGrand() {
           return;
         }
       }
-    } catch (err) {
+    } catch (err: unknown) { if(err){} 
       console.warn("[NOTEBOOK_CREATE_WARN]", err);
     }
 
@@ -393,7 +394,7 @@ export default function ExamSolverGrand() {
     if (e) e.stopPropagation();
     try {
       await fetch(`/api/notebooks?id=${id}`, { method: "DELETE" });
-    } catch (err) {
+    } catch (err: unknown) { if(err){} 
       console.warn("[NOTEBOOK_DELETE_WARN]", err);
     }
     const updated = notebooks.filter(nb => nb.id !== id);
@@ -408,7 +409,7 @@ export default function ExamSolverGrand() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversation_id: convId, notebook_id: nbId })
       });
-    } catch (err) {
+    } catch (err: unknown) { if(err){} 
       console.warn("[NOTEBOOK_MOVE_CONV_WARN]", err);
     }
 
@@ -445,8 +446,42 @@ export default function ExamSolverGrand() {
   const handleUploadMaterial = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !e.target.files[0] || !activeNotebookId) return;
     const file = e.target.files[0];
+    
+    if (file.size > 10 * 1024 * 1024) {
+      setError("O arquivo é muito grande. O limite máximo é 10MB.");
+      return;
+    }
+    
     setIsUploadingMaterial(true);
     setError(null);
+
+    if (file.type === "application/pdf") {
+      try {
+        const base64Url = await convertPdfToVerticalImage(file, 4);
+        const res = await fetch("/api/notebooks/materials", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            notebook_id: activeNotebookId,
+            title: file.name,
+            file_url: base64Url,
+            file_type: "image/jpeg",
+            file_size: file.size
+          })
+        });
+        if (res.ok) {
+          const { material } = await res.json();
+          if (material) setMaterials(prev => [material, ...prev]);
+        } else {
+          const errData = await res.json();
+          setError(errData.error || "Falha ao salvar material.");
+        }
+      } catch (err: unknown) { if(err){} 
+        setError("Falha ao renderizar PDF para extração de material.");
+      }
+      setIsUploadingMaterial(false);
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = async () => {
@@ -690,7 +725,7 @@ export default function ExamSolverGrand() {
             moveConversationToNotebook(created.id, activeNotebookId);
           }
         }
-      } catch (err) {
+      } catch (err: unknown) { if(err){} 
         console.warn("Erro ao criar conversa para ferramenta de IA:", err);
       }
     }
@@ -1002,7 +1037,7 @@ export default function ExamSolverGrand() {
           setSettingsMessage("Saldo de créditos e plano sincronizados com sucesso!");
         }
       }
-    } catch (err) {
+    } catch (err: unknown) { if(err){} 
       console.error(err);
     }
     setIsRefreshingCredits(false);
@@ -1023,7 +1058,7 @@ export default function ExamSolverGrand() {
         setIsAvatarModalOpen(false);
         setNewAvatarInput("");
       }
-    } catch (err) {
+    } catch (err: unknown) { if(err){} 
       console.error("Erro ao salvar avatar:", err);
     } finally {
       setIsSavingAvatar(false);
@@ -1138,7 +1173,7 @@ export default function ExamSolverGrand() {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
-    } catch (err) {
+    } catch (err: unknown) { if(err){} 
       console.error(err);
       setIsCameraOpen(false);
       setError("Permissão de câmera negada ou dispositivo indisponível.");
@@ -1177,13 +1212,35 @@ export default function ExamSolverGrand() {
 
   // Chat Submission
   // Chat Submission
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      setImageFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => setImageBase64(reader.result as string);
-      reader.readAsDataURL(file);
+      
+      if (file.size > 10 * 1024 * 1024) {
+        setError("O arquivo é muito grande. O limite máximo é 10MB.");
+        setIsAttachMenuOpen(false);
+        return;
+      }
+
+      if (file.type === "application/pdf") {
+        try {
+          setError(null);
+          const base64Img = await convertPdfToVerticalImage(file, 4);
+          setImageBase64(base64Img);
+          
+          const res = await fetch(base64Img);
+          const blob = await res.blob();
+          const newImageFile = new File([blob], file.name.replace(".pdf", ".jpg"), { type: "image/jpeg" });
+          setImageFile(newImageFile);
+        } catch (err: unknown) { if(err){} 
+          setError("Falha ao renderizar PDF. Arquivo corrompido ou protegido.");
+        }
+      } else {
+        setImageFile(file);
+        const reader = new FileReader();
+        reader.onloadend = () => setImageBase64(reader.result as string);
+        reader.readAsDataURL(file);
+      }
       setIsAttachMenuOpen(false);
     }
   };
@@ -1225,7 +1282,7 @@ export default function ExamSolverGrand() {
             }
           }
         }
-      } catch (err) {
+      } catch (err: unknown) { if(err){} 
         console.warn("[CONV_API_CREATE_WARN]", err);
       }
 
@@ -1363,7 +1420,7 @@ export default function ExamSolverGrand() {
         });
       }
       
-    } catch (err) {
+    } catch (err: unknown) { if(err){} 
       setError(err instanceof Error ? err.message : "Erro inesperado.");
       setMessages(prev => prev.filter(msg => msg.id !== tempAiMsgId));
     } finally {
@@ -1612,6 +1669,17 @@ export default function ExamSolverGrand() {
             </div>
     </>
   );
+
+  if (!isProfileLoaded || isDataLoading) {
+    return (
+      <div className="flex h-[100dvh] w-full items-center justify-center bg-zinc-50 dark:bg-[#0A0A0A]">
+         <div className="text-center flex flex-col items-center">
+           <Loader2 className="w-8 h-8 text-indigo-500 animate-spin mb-4" />
+           <p className="text-zinc-500 dark:text-zinc-400 text-sm font-medium animate-pulse">Carregando sessão do ExamSolver...</p>
+         </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-[100dvh] w-full bg-white dark:bg-[#0A0A0A] text-[#1f1f1f] dark:text-[#e3e3e3] font-sans overflow-hidden transition-colors duration-500">

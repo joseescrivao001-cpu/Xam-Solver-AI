@@ -63,9 +63,12 @@ export default function PricingModal({
 
   if (!isOpen) return null;
 
-  const proAoaFormatted = paymentSettings?.plans?.pro?.formatted_aoa || "9.500 Kz";
-  const ultraAoaFormatted = paymentSettings?.plans?.ultra?.formatted_aoa || "19.000 Kz";
-  const premiumAoaFormatted = paymentSettings?.plans?.premium?.formatted_aoa || "39.000 Kz";
+  const proAoaFormatted = paymentSettings?.plans?.pro?.formatted_aoa || "4.750 Kz";
+  const proUsd = paymentSettings?.plans?.pro?.usd || 5;
+  const ultraAoaFormatted = paymentSettings?.plans?.ultra?.formatted_aoa || "9.500 Kz";
+  const ultraUsd = paymentSettings?.plans?.ultra?.usd || 10;
+  const premiumAoaFormatted = paymentSettings?.plans?.premium?.formatted_aoa || "37.050 Kz";
+  const premiumUsd = paymentSettings?.plans?.premium?.usd || 39;
   const exchangeRate = paymentSettings?.usd_to_aoa_rate || 950;
   const bankName = paymentSettings?.bank_name || "";
   const accountHolder = paymentSettings?.account_holder || "José Escrivão Silvestre";
@@ -360,7 +363,7 @@ export default function PricingModal({
                     <Check className="w-4 h-4 text-indigo-400 shrink-0" /> <strong className="text-indigo-300">2.000 Créditos</strong> de resolução
                   </li>
                   <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-indigo-400 shrink-0" /> Motor IA Groq Ultra-Rápido & Gemini Flash
+                    <Check className="w-4 h-4 text-indigo-400 shrink-0" /> Cerebras LLaMA 3.1 70B
                   </li>
                   <li className="flex items-center gap-2.5">
                     <Check className="w-4 h-4 text-indigo-400 shrink-0" /> Leitura OCR Avançada de Fórmulas e Provas
@@ -428,7 +431,7 @@ export default function PricingModal({
                     <Check className="w-4 h-4 text-amber-400 shrink-0" /> <strong className="text-amber-300">Créditos ILIMITADOS</strong> (Sem contador e sem fim)
                   </li>
                   <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-amber-400 shrink-0" /> <strong>Cluster Completo: Gemini 1.5 Pro + LLaMA 3.3 + Groq</strong>
+                    <Check className="w-4 h-4 text-amber-400 shrink-0" /> <strong>Cluster Completo: Cerebras LLaMA 3.1 70B + Vision</strong>
                   </li>
                   <li className="flex items-center gap-2.5">
                     <Check className="w-4 h-4 text-amber-400 shrink-0" /> Resolução de Cálculo, Física Avançada e Engenharias
@@ -475,7 +478,7 @@ export default function PricingModal({
               </h3>
               <p className="text-zinc-400 text-sm mt-1">
                 Valor Oficial: <strong className="text-emerald-400">
-                  {selectedPlan === 'pro' ? `${proAoaFormatted} ($10 USD)` : selectedPlan === 'ultra' ? `${ultraAoaFormatted} ($19 USD)` : `${premiumAoaFormatted} ($39 USD)`}
+                  {selectedPlan === 'pro' ? `${proAoaFormatted} (${proUsd} USD)` : selectedPlan === 'ultra' ? `${ultraAoaFormatted} (${ultraUsd} USD)` : `${premiumAoaFormatted} (${premiumUsd} USD)`}
                 </strong>
               </p>
               <p className="text-[11px] text-zinc-500 mt-1">
