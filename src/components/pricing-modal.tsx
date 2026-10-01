@@ -65,10 +65,10 @@ export default function PricingModal({
 
   const proAoaFormatted = paymentSettings?.plans?.pro?.formatted_aoa || "4.750 Kz";
   const proUsd = paymentSettings?.plans?.pro?.usd || 5;
-  const ultraAoaFormatted = paymentSettings?.plans?.ultra?.formatted_aoa || "9.500 Kz";
-  const ultraUsd = paymentSettings?.plans?.ultra?.usd || 10;
-  const premiumAoaFormatted = paymentSettings?.plans?.premium?.formatted_aoa || "37.050 Kz";
-  const premiumUsd = paymentSettings?.plans?.premium?.usd || 39;
+  const premiumAoaFormatted = paymentSettings?.plans?.premium?.formatted_aoa || "9.500 Kz";
+  const premiumUsd = paymentSettings?.plans?.premium?.usd || 10;
+  
+  
   const exchangeRate = paymentSettings?.usd_to_aoa_rate || 950;
   const bankName = paymentSettings?.bank_name || "";
   const accountHolder = paymentSettings?.account_holder || "José Escrivão Silvestre";
@@ -141,8 +141,8 @@ export default function PricingModal({
 
     const amount = selectedPlan === 'pro' 
       ? proAoaFormatted 
-      : selectedPlan === 'ultra' 
-      ? ultraAoaFormatted 
+      : selectedPlan === "premium" 
+      ? premiumAoaFormatted 
       : premiumAoaFormatted;
 
     try {
@@ -328,7 +328,7 @@ export default function PricingModal({
               </div>
             </div>
 
-            {/* 2. PLANO PRO (2.000 Créditos) */}
+            {/* 2. PLANO PRO (20.000 Créditos) */}
             <div className="bg-gradient-to-b from-zinc-900/90 to-zinc-950/90 backdrop-blur-xl border-2 border-indigo-500/60 rounded-3xl p-6 flex flex-col justify-between transition-all duration-300 hover:scale-105 shadow-[0_0_50px_rgba(99,102,241,0.25)] relative">
               <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
                 <span className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white text-[11px] font-black tracking-wider uppercase px-4 py-1 rounded-full shadow-lg shadow-indigo-500/40 flex items-center gap-1.5">
@@ -360,7 +360,7 @@ export default function PricingModal({
 
                 <ul className="space-y-3 text-xs text-zinc-200">
                   <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-indigo-400 shrink-0" /> <strong className="text-indigo-300">2.000 Créditos</strong> de resolução
+                    <Check className="w-4 h-4 text-indigo-400 shrink-0" /> <strong className="text-indigo-300">20.000 Créditos</strong> de resolução
                   </li>
                   <li className="flex items-center gap-2.5">
                     <Check className="w-4 h-4 text-indigo-400 shrink-0" /> Cerebras LLaMA 3.1 70B
@@ -383,14 +383,14 @@ export default function PricingModal({
                     onClick={() => setSelectedPlan('pro')}
                     className="w-full h-11 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg cursor-pointer"
                   >
-                    Recarregar +2.000 Créditos
+                    Recarregar +20.000 Créditos
                   </Button>
                 ) : (
                   <Button 
                     onClick={() => setSelectedPlan('pro')}
                     className="w-full h-11 rounded-xl text-xs font-bold bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-lg shadow-indigo-500/30 transition-all hover:scale-[1.02] cursor-pointer"
                   >
-                    Fazer Upgrade para Pro (2.000) <ArrowRight className="w-4 h-4 ml-1.5" />
+                    Fazer Upgrade para Pro (20.000) <ArrowRight className="w-4 h-4 ml-1.5" />
                   </Button>
                 )}
               </div>
@@ -474,11 +474,11 @@ export default function PricingModal({
             <div className="p-6 rounded-3xl bg-zinc-900 border border-zinc-800 shadow-xl text-center mb-6">
               <span className="text-xs font-bold uppercase tracking-wider text-indigo-400">Plano Selecionado</span>
               <h3 className="text-2xl font-bold text-white mt-1">
-                {selectedPlan === 'pro' ? 'Plano Pro (2.000 Créditos)' : selectedPlan === 'ultra' ? 'Plano Ultra (10.000 Créditos)' : 'Plano Premium VIP (Ilimitado)'}
+                {selectedPlan === 'pro' ? 'Plano Pro (20.000 Créditos)' : selectedPlan === "premium" ? 'Plano Premium (Ilimitado)' : 'Plano Premium VIP (Ilimitado)'}
               </h3>
               <p className="text-zinc-400 text-sm mt-1">
                 Valor Oficial: <strong className="text-emerald-400">
-                  {selectedPlan === 'pro' ? `${proAoaFormatted} (${proUsd} USD)` : selectedPlan === 'ultra' ? `${ultraAoaFormatted} (${ultraUsd} USD)` : `${premiumAoaFormatted} (${premiumUsd} USD)`}
+                  {selectedPlan === 'pro' ? `${proAoaFormatted} (${proUsd} USD)` : selectedPlan === "premium" ? `${premiumAoaFormatted} (${premiumUsd} USD)` : `${premiumAoaFormatted} (${premiumUsd} USD)`}
                 </strong>
               </p>
               <p className="text-[11px] text-zinc-500 mt-1">
@@ -541,7 +541,7 @@ export default function PricingModal({
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-500">Valor a Transferir:</span>
                   <span className="font-bold text-emerald-400 text-sm">
-                    {selectedPlan === 'pro' ? proAoaFormatted : selectedPlan === 'ultra' ? ultraAoaFormatted : premiumAoaFormatted}
+                    {selectedPlan === 'pro' ? proAoaFormatted : selectedPlan === "premium" ? premiumAoaFormatted : premiumAoaFormatted}
                   </span>
                 </div>
 

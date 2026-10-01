@@ -1557,7 +1557,7 @@ export default function ExamSolverGrand() {
                       <div className="relative" ref={modelRef}>
                         <button onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition">
                           <BrainCircuit className="w-3.5 h-3.5 text-indigo-500 hidden sm:block" />
-                          {modelMode === "claude-opus-5" || modelMode === "gpt-6-astra" ? "Ultra" : modelMode === "gpt-5.6-sol" ? "Pro" : "Flash"}
+                          {modelMode === "claude-opus-5" || modelMode === "gpt-6-astra" ? "Vision" : modelMode === "gpt-5.6-sol" ? "Core" : "Fast"}
                           <ChevronDown className="w-3.5 h-3.5 opacity-50" />
                         </button>
                         {isModelDropdownOpen && (
@@ -1567,7 +1567,7 @@ export default function ExamSolverGrand() {
                               className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
                             >
                               <div>
-                                <p className="font-medium text-xs">Flash (DeepSeek)</p>
+                                <p className="font-medium text-xs">Fast (LPU)</p>
                                 <p className="text-[10px] text-zinc-500">Rápido e Preciso</p>
                               </div>
                               {modelMode === "deepseek-v4-flash" && <Check className="w-3.5 h-3.5 text-indigo-500" />}
@@ -1587,7 +1587,7 @@ export default function ExamSolverGrand() {
                             >
                               <div>
                                 <p className="font-medium text-xs flex items-center gap-1">
-                                  Pro (GPT-5.6)
+                                  Core (GPT-OSS)
                                   {(userPlan === 'free' || !userPlan) && <Lock className="w-3 h-3 text-zinc-400" />}
                                 </p>
                                 <p className="text-[10px] text-zinc-500">Para questões complexas</p>
@@ -1609,7 +1609,7 @@ export default function ExamSolverGrand() {
                             >
                               <div>
                                 <p className="font-medium text-xs flex items-center gap-1">
-                                  Ultra (Claude 5)
+                                  Vision (QWEN)
                                   {userPlan !== 'ultra' && userPlan !== 'premium' && <Lock className="w-3 h-3 text-zinc-400" />}
                                 </p>
                                 <p className="text-[10px] text-zinc-500">Inteligência Máxima</p>
@@ -1854,7 +1854,7 @@ export default function ExamSolverGrand() {
                 <div className="rounded-xl p-3 bg-zinc-200/40 dark:bg-zinc-800/40 animate-pulse h-12" />
               ) : (
                 <>
-                  <div onClick={() => setIsPricingOpen(true)} className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-zinc-100 dark:hover:bg-[#121212] rounded-xl transition group text-zinc-500">
+                  <div onClick={() => user ? setIsPricingOpen(true) : router.push("/login")} className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-zinc-100 dark:hover:bg-[#121212] rounded-xl transition group text-zinc-500">
                     <div className="flex items-center gap-2">
                       <Sparkles className={`w-3.5 h-3.5 ${userPlan === 'premium' ? 'text-amber-500' : 'text-zinc-400'}`} />
                       <span className="text-[12px] font-medium text-zinc-700 dark:text-zinc-300">
@@ -1970,7 +1970,7 @@ export default function ExamSolverGrand() {
               </div>
             ) : (
               <div className="flex items-center gap-4">
-                <button onClick={() => setIsPricingOpen(true)} className="text-[13px] text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 transition flex items-center gap-1.5 font-medium">
+                <button onClick={() => user ? setIsPricingOpen(true) : router.push("/login")} className="text-[13px] text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 transition flex items-center gap-1.5 font-medium">
                   <div className="w-5 h-5 bg-zinc-100 dark:bg-zinc-800 rounded-md flex items-center justify-center border border-zinc-200 dark:border-zinc-700/50 shadow-sm">
                     <Sparkles className="w-3 h-3 text-zinc-400 dark:text-zinc-500" />
                   </div>
@@ -2807,7 +2807,7 @@ export default function ExamSolverGrand() {
                   <div className="flex items-center gap-2">
                     {userPlan !== 'premium' ? (
                       <Button 
-                        onClick={() => setIsPricingOpen(true)}
+                        onClick={() => user ? setIsPricingOpen(true) : router.push("/login")}
                         variant="default"
                         size="sm"
                         className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs h-8 px-3"
@@ -2816,7 +2816,7 @@ export default function ExamSolverGrand() {
                       </Button>
                     ) : (
                       <Button 
-                        onClick={() => setIsPricingOpen(true)}
+                        onClick={() => user ? setIsPricingOpen(true) : router.push("/login")}
                         variant="outline"
                         size="sm"
                         className="border-amber-500/30 text-amber-400 bg-amber-500/10 rounded-xl text-xs h-8 px-3"

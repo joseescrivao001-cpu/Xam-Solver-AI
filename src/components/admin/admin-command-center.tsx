@@ -445,7 +445,7 @@ export default function AdminCommandCenter() {
                   <span className="text-xs text-zinc-400">Roteamento Inteligente Multi-LLM</span>
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Motor de Infer�ncia Neural operado nativamente pela Cerebras AI (Modelos open-source de alt�ssima velocidade).
+                  Motor de Inferência Neural operado nativamente pela Cerebras AI (Modelos open-source de alt�ssima velocidade).
                 </p>
 
                 <div className="space-y-3 pt-2">

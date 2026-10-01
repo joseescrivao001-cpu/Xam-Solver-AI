@@ -1,3 +1,4 @@
+import { PLANS } from "@/lib/plan-config";
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 
@@ -40,8 +41,8 @@ export async function GET() {
         .insert({
           id: user.id,
           email: user.email,
-          credits_balance: isOwner ? 1000000 : 50,
-          plan_type: isOwner ? "premium" : "free",
+          credits_balance: isOwner ? PLANS.premium.credits : PLANS.free.credits,
+          plan_type: isOwner ? PLANS.premium.id : PLANS.free.id,
           is_admin: isOwner,
           avatar_url: googleAvatar,
           full_name: googleName,
@@ -64,7 +65,7 @@ export async function GET() {
       if (user.email?.toLowerCase().trim() === "joseescrivao001@gmail.com") {
         if (!finalProfile.is_admin) updates.is_admin = true;
         if (finalProfile.plan_type !== "premium") updates.plan_type = "premium";
-        if ((finalProfile.credits_balance || 0) < 1000) updates.credits_balance = 1000000;
+        if ((finalProfile.credits_balance || 0) < 1000) updates.credits_balance = PLANS.premium.credits;
       }
 
       if (Object.keys(updates).length > 0) {

@@ -80,7 +80,7 @@ export async function GET() {
         totalConversations: totalChats || 0,
         modelDistribution: [
           { name: "Cerebras LLaMA 3.2 90B Vision (OCR/Imagens)", share: 55, color: "emerald" },
-          { name: "Cerebras LLaMA 3.1 70B (Racioc�nio R�pido)", share: 30, color: "violet" },
+          { name: "Cerebras LLaMA 3.1 70B (Raciocínio R�pido)", share: 30, color: "violet" },
           { name: "Cerebras LLaMA 3.3 70B (Matem�tica Complexa)", share: 15, color: "indigo" }
         ]
       }

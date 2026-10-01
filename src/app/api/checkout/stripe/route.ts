@@ -1,3 +1,4 @@
+import { PLANS } from '@/lib/plan-config';
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
@@ -25,8 +26,8 @@ export async function POST(req: Request) {
       });
     }
 
-    const priceAmount = plan_type === 'premium' ? 3900 : 1900; // $39 ou $19
-    const planName = plan_type === 'premium' ? 'ExamSolver AI Premium VIP' : 'ExamSolver AI Ultra';
+    const priceAmount = plan_type === 'premium' ? PLANS.premium.priceUsd * 100 : PLANS.pro.priceUsd * 100;
+    const planName = plan_type === 'premium' ? 'ExamSolver AI Premium VIP' : 'ExamSolver AI Pro';
 
     const params = new URLSearchParams();
     params.append('payment_method_types[]', 'card');

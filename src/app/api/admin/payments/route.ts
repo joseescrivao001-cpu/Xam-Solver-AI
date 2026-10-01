@@ -1,3 +1,4 @@
+import { PLANS } from "@/lib/plan-config";
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { verifyAdmin, unauthorizedResponse } from "@/lib/admin-auth";
@@ -84,7 +85,7 @@ export async function POST(request: Request) {
         .single();
 
       const currentBalance = profile?.credits_balance || 0;
-      const newBalance = plan === "premium" ? 999999999 : currentBalance + creditsToAdd;
+      const newBalance = (plan === "premium" || plan === "ultra") ? PLANS.premium.credits : currentBalance + creditsToAdd;
 
       const { error: updateProfileErr } = await supabase
         .from("profiles")

@@ -1,3 +1,4 @@
+import { PLANS } from '@/lib/plan-config';
 import { NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
     const serviceClient = createServiceClient();
     const dbClient = serviceClient || supabase;
 
-    const defaultAmount = amount || (plan_type === 'pro' ? '5 USD' : plan_type === 'ultra' ? '10 USD' : '39 USD');
+    const defaultAmount = amount || (plan_type === "pro" ? PLANS.pro.priceUsd + " USD" : PLANS.premium.priceUsd + " USD");
 
     // Registrar o comprovativo de pagamento
     const { data: proof, error: insertError } = await dbClient
