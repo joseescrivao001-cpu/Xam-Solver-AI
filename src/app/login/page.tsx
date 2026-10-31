@@ -37,7 +37,7 @@ export default function LoginPage() {
     try {
       const redirectUrl = typeof window !== 'undefined'
         ? `${window.location.origin}/auth/callback?next=/auth/reset-password`
-        : 'https://xam-solver-ai.vercel.app/auth/callback?next=/auth/reset-password';
+        : `${process.env.NEXT_PUBLIC_SITE_URL || 'https://xam-solver-ai.vercel.app'}/auth/callback?next=/auth/reset-password`;
 
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: redirectUrl,

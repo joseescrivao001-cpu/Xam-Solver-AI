@@ -4,6 +4,7 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { ownsNotebook } from "@/lib/access";
 
 export async function GET(req: Request) {
   try {
@@ -25,6 +26,14 @@ export async function GET(req: Request) {
     if (!notebook_id) {
       return new Response(JSON.stringify({ error: "notebook_id é obrigatório." }), {
         status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Isolamento de dados: o cliente service_role ignora RLS.
+    if (!(await ownsNotebook(db, notebook_id, user.id))) {
+      return new Response(JSON.stringify({ error: "Caderno não encontrado." }), {
+        status: 404,
         headers: { 'Content-Type': 'application/json' }
       });
     }
@@ -70,6 +79,14 @@ export async function POST(req: Request) {
     if (!notebook_id) {
       return new Response(JSON.stringify({ error: "notebook_id é obrigatório." }), {
         status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Isolamento de dados: o cliente service_role ignora RLS.
+    if (!(await ownsNotebook(db, notebook_id, user.id))) {
+      return new Response(JSON.stringify({ error: "Caderno não encontrado." }), {
+        status: 404,
         headers: { 'Content-Type': 'application/json' }
       });
     }

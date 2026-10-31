@@ -18,7 +18,6 @@ interface PaymentSettingsData {
   usd_to_aoa_rate: number;
   plans: {
     pro?: { usd: number; aoa: number; formatted_aoa: string; credits: string };
-    ultra?: { usd: number; aoa: number; formatted_aoa: string; credits: string };
     premium?: { usd: number; aoa: number; formatted_aoa: string; credits: string };
   };
 }
@@ -38,7 +37,7 @@ export default function PricingModal({
   userEmail,
   onPlanUpdated
 }: PricingModalProps) {
-  const [selectedPlan, setSelectedPlan] = useState<'pro' | 'ultra' | 'premium' | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<'pro' | 'premium' | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'mcx' | 'stripe' | null>(null);
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofBase64, setProofBase64] = useState<string | null>(null);
@@ -303,7 +302,7 @@ export default function PricingModal({
 
                 <ul className="space-y-3 text-xs text-zinc-300">
                   <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" /> <strong>5 Créditos</strong> de cortesia
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" /> <strong>50 Créditos</strong> ao criar conta
                   </li>
                   <li className="flex items-center gap-2.5">
                     <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Motor IA de Resolução Instantânea
@@ -355,7 +354,7 @@ export default function PricingModal({
 
                 <div className="my-5">
                   <span className="text-3xl sm:text-4xl font-black text-white">{proAoaFormatted}</span>
-                  <span className="text-zinc-500 text-xs ml-1.5">ou $10 USD</span>
+                  <span className="text-zinc-500 text-xs ml-1.5">ou ${proUsd} USD</span>
                 </div>
 
                 <ul className="space-y-3 text-xs text-zinc-200">
@@ -363,7 +362,7 @@ export default function PricingModal({
                     <Check className="w-4 h-4 text-indigo-400 shrink-0" /> <strong className="text-indigo-300">20.000 Créditos</strong> de resolução
                   </li>
                   <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-indigo-400 shrink-0" /> Cerebras LLaMA 3.1 70B
+                    <Check className="w-4 h-4 text-indigo-400 shrink-0" /> Modelos avançados de raciocínio
                   </li>
                   <li className="flex items-center gap-2.5">
                     <Check className="w-4 h-4 text-indigo-400 shrink-0" /> Leitura OCR Avançada de Fórmulas e Provas
@@ -423,7 +422,7 @@ export default function PricingModal({
 
                 <div className="my-5">
                   <span className="text-3xl sm:text-4xl font-black text-white">{premiumAoaFormatted}</span>
-                  <span className="text-zinc-500 text-xs ml-1.5">ou $39 USD</span>
+                  <span className="text-zinc-500 text-xs ml-1.5">ou ${premiumUsd} USD</span>
                 </div>
 
                 <ul className="space-y-3 text-xs text-zinc-200">
@@ -431,7 +430,7 @@ export default function PricingModal({
                     <Check className="w-4 h-4 text-amber-400 shrink-0" /> <strong className="text-amber-300">Créditos ILIMITADOS</strong> (Sem contador e sem fim)
                   </li>
                   <li className="flex items-center gap-2.5">
-                    <Check className="w-4 h-4 text-amber-400 shrink-0" /> <strong>Cluster Completo: Cerebras LLaMA 3.1 70B + Vision</strong>
+                    <Check className="w-4 h-4 text-amber-400 shrink-0" /> <strong>Modelos de visão de topo</strong> para fotos de provas
                   </li>
                   <li className="flex items-center gap-2.5">
                     <Check className="w-4 h-4 text-amber-400 shrink-0" /> Resolução de Cálculo, Física Avançada e Engenharias
@@ -474,7 +473,7 @@ export default function PricingModal({
             <div className="p-6 rounded-3xl bg-zinc-900 border border-zinc-800 shadow-xl text-center mb-6">
               <span className="text-xs font-bold uppercase tracking-wider text-indigo-400">Plano Selecionado</span>
               <h3 className="text-2xl font-bold text-white mt-1">
-                {selectedPlan === 'pro' ? 'Plano Pro (20.000 Créditos)' : selectedPlan === "premium" ? 'Plano Premium (Ilimitado)' : 'Plano Premium VIP (Ilimitado)'}
+                {selectedPlan === 'pro' ? 'Plano Pro (20.000 Créditos)' : 'Plano Premium (Ilimitado)'}
               </h3>
               <p className="text-zinc-400 text-sm mt-1">
                 Valor Oficial: <strong className="text-emerald-400">

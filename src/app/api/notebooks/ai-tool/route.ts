@@ -4,6 +4,7 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { ownsConversation, ownsNotebook } from "@/lib/access";
 
 export async function POST(req: Request) {
   try {
@@ -19,6 +20,20 @@ export async function POST(req: Request) {
     const { notebook_id, action, conversation_id } = await req.json();
     if (!notebook_id || !action) {
       return new Response(JSON.stringify({ error: "notebook_id e action são obrigatórios." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    // Isolamento de dados: o cliente service_role ignora RLS, por isso a
+    // propriedade do caderno e da conversa tem de ser verificada aqui.
+    if (!(await ownsNotebook(db, notebook_id, user.id))) {
+      return new Response(JSON.stringify({ error: "Caderno não encontrado." }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    if (
+      conversation_id &&
+      conversation_id !== "guest" &&
+      !(await ownsConversation(db, conversation_id, user.id))
+    ) {
+      return new Response(JSON.stringify({ error: "Conversa não encontrada." }), { status: 404, headers: { 'Content-Type': 'application/json' } });
     }
 
     // 1. Obter informacoes do Caderno

@@ -4,6 +4,8 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { clientKey, hit, rateLimitHeaders } from "@/lib/rate-limit";
+import { apiError, logError } from "@/lib/http";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfParse = require("pdf-parse");
 
@@ -53,6 +55,16 @@ export async function POST(req: Request) {
 
     if (!user) {
       return new Response(JSON.stringify({ error: "Não autorizado." }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    // Rota legada (o cliente atual usa /api/chat). Mantida por compatibilidade,
+    // mas com limite de pedidos para não servir de proxy aberto à API de IA.
+    const limit = hit(clientKey(req, user.id), 20, 60_000);
+    if (!limit.ok) {
+      return new Response(
+        JSON.stringify({ error: "Demasiados pedidos. Aguarde alguns instantes." }),
+        { status: 429, headers: { 'Content-Type': 'application/json', ...rateLimitHeaders(limit) } }
+      );
     }
 
     const serviceClient = createServiceClient();
@@ -215,8 +227,7 @@ export async function POST(req: Request) {
     });
 
   } catch (error: unknown) {
-    console.error("[SOLVE] Fatal Error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
-    return new Response(JSON.stringify({ error: errorMessage }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+    logError("[SOLVE] Erro fatal", error);
+    return apiError("internal", { scope: "[SOLVE]" });
   }
 }

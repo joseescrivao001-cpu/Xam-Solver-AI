@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:security": "node --test tests/security/static-guards.test.mjs",
+    "test:db": "python3 supabase/tests/run_local_tests.py"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.69",

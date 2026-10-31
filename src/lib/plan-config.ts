@@ -1,8 +1,5 @@
-﻿
-export const GUEST_CREDITS = 5;
-export const PLANS = {
-  free: { id: "free", name: "Free", credits: 50, priceUsd: 0, priceAoa: 0 },
-  pro: { id: "pro", name: "Pro", credits: 20000, priceUsd: 5, priceAoa: 5000 },
-  premium: { id: "premium", name: "Premium", credits: 1000000, priceUsd: 10, priceAoa: 10000 }
-};
-
+﻿/**
+ * Compatibilidade: `plan-config` era a fonte de verdade antiga.
+ * Hoje delega em `@/lib/plans`, para que exista apenas um sítio com preços.
+ */
+export { GUEST_CREDITS, PLANS, PREMIUM_CREDITS, SIGNUP_CREDITS } from "@/lib/plans";

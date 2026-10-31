@@ -1,4 +1,5 @@
 import { PLANS } from "@/lib/plan-config";
+import { isConfiguredAdmin } from "@/lib/admin-config";
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 
@@ -35,7 +36,7 @@ export async function GET() {
 
     // Se o perfil não existir ainda, criar agora
     if (!finalProfile) {
-      const isOwner = user.email?.toLowerCase().trim() === "joseescrivao001@gmail.com";
+      const isOwner = isConfiguredAdmin(user.id, user.email);
       const { data: newProfile } = await db
         .from("profiles")
         .insert({
@@ -59,13 +60,6 @@ export async function GET() {
       }
       if (!finalProfile.full_name && googleName) {
         updates.full_name = googleName;
-      }
-
-      // Se for o e-mail do fundador, garantir que is_admin e premium estejam ativos
-      if (user.email?.toLowerCase().trim() === "joseescrivao001@gmail.com") {
-        if (!finalProfile.is_admin) updates.is_admin = true;
-        if (finalProfile.plan_type !== "premium") updates.plan_type = "premium";
-        if ((finalProfile.credits_balance || 0) < 1000) updates.credits_balance = PLANS.premium.credits;
       }
 
       if (Object.keys(updates).length > 0) {

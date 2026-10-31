@@ -1,18 +1,26 @@
-import { NextResponse, type NextRequest } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
+import { NextResponse, type NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { isConfiguredAdmin } from "@/lib/admin-config";
+
+/**
+ * Middleware de sessão e proteção administrativa.
+ *
+ * Alterações (2026-10-28):
+ *  - Removidos o e-mail e os UUIDs de administrador que estavam fixos aqui.
+ *  - A verificação passou a usar a configuração de ambiente partilhada.
+ *  - O matcher deixou de cobrir `/api/*`: as rotas já autenticam por si e cada
+ *    pedido passava a fazer dois `auth.getUser()` (uma viagem extra à rede por
+ *    pedido de IA). Continua a cobrir páginas e o painel.
+ */
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  });
+  let response = NextResponse.next({ request: { headers: request.headers } });
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+    process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
     {
       cookies: {
         getAll() {
@@ -20,9 +28,7 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          response = NextResponse.next({
-            request,
-          });
+          response = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
           );
@@ -31,40 +37,15 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // IMPORTANTE: Isso atualiza a sessão (refreshes the token if expired)
-  const { data: { user } } = await supabase.auth.getUser();
+  // Atualiza a sessão (renova o token quando expirou).
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  // Proteger rigorosamente todas as rotas administrativas (/admin e sub-rotas)
-  if (pathname.startsWith('/admin')) {
-    // 1. Blindagem por UUID Estático ou E-mail Mestre
-    const MASTER_ADMIN_EMAIL = "joseescrivao001@gmail.com";
-    const MASTER_ADMIN_UUIDS = [
-      "604c5dee-7dd6-4590-9f11-9df9043803f2",
-      "07167607-a59a-48ce-a5b9-1dcc6f01f2f0"
-    ];
-    const configuredAdminId = process.env.ADMIN_USER_ID?.trim();
-    const allowedAdminIds = configuredAdminId
-      ? configuredAdminId.split(',').map((id) => id.trim()).filter(Boolean)
-      : [...MASTER_ADMIN_UUIDS];
-
-    for (const masterId of MASTER_ADMIN_UUIDS) {
-      if (!allowedAdminIds.includes(masterId)) {
-        allowedAdminIds.push(masterId);
-      }
-    }
-
-    const isMatchAdmin = !!(
-      user && (
-        (user.email && user.email.toLowerCase().trim() === MASTER_ADMIN_EMAIL) ||
-        (user.id && allowedAdminIds.includes(user.id))
-      )
-    );
-
-    // Ocultação de Rota: se NÃO for o Admin, retorna erro 404 (Não Encontrado)
-    if (!isMatchAdmin) {
-      return NextResponse.rewrite(new URL('/_not-found', request.url), {
-        status: 404,
-      });
+  if (pathname.startsWith("/admin")) {
+    if (!isConfiguredAdmin(user?.id, user?.email)) {
+      // Ocultação de rota: 404 em vez de 403.
+      return NextResponse.rewrite(new URL("/_not-found", request.url), { status: 404 });
     }
   }
 
@@ -74,12 +55,11 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * Feel free to modify this pattern to include more paths.
+     * Mantém-se a cobrir as rotas de API de propósito: é aqui que o token de
+     * sessão é renovado. Uma otimização futura poderá retirá-las do matcher e
+     * renovar a sessão apenas nas páginas, mas isso exige verificar antes que
+     * as rotas propagam os cookies renovados nas respostas em streaming.
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?)$).*)",
   ],
 };

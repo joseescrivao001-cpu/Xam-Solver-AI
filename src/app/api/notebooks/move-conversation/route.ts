@@ -36,7 +36,7 @@ export async function POST(req: Request) {
 
     if (error) {
       console.error("[MOVE_CONV_ERROR]", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: "Erro interno. Tente novamente." }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, conversation: updated });

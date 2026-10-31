@@ -1,96 +1,101 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { PLANS } from "@/lib/plans";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Configuração pública de pagamento (dados bancários + planos).
+ *
+ * Correções (2026-10-28):
+ *  - Os preços passaram a vir de `@/lib/plans` (fonte única). Antes, este
+ *    ficheiro devolvia Pro $5 / Premium $39 no caminho normal e Pro $10 /
+ *    Ultra $19 no fallback — o preço mostrado ao cliente mudava conforme a
+ *    API de câmbio estivesse disponível ou não.
+ *  - O plano "ultra" (descontinuado) saiu da resposta.
+ *  - Texto corrompido ("Cr�ditos") corrigido.
+ */
+
+interface PaymentSettingsRow {
+  bank_name?: string | null;
+  account_holder?: string | null;
+  express_phone?: string | null;
+  iban?: string | null;
+  notes?: string | null;
+  usd_to_aoa_rate?: number | string | null;
+}
+
+const FALLBACK_RATE = 950;
+
+function buildPlanPayload(rate: number) {
+  const toKz = (usd: number) => Math.round(usd * rate);
+  const fmt = (value: number) => `${value.toLocaleString("pt-AO")} Kz`;
+
+  return {
+    pro: {
+      id: PLANS.pro.id,
+      name: PLANS.pro.name,
+      usd: PLANS.pro.priceUsd,
+      aoa: toKz(PLANS.pro.priceUsd),
+      formatted_aoa: fmt(toKz(PLANS.pro.priceUsd)),
+      credits: `${PLANS.pro.credits.toLocaleString("pt-PT")} Créditos`,
+    },
+    premium: {
+      id: PLANS.premium.id,
+      name: PLANS.premium.name,
+      usd: PLANS.premium.priceUsd,
+      aoa: toKz(PLANS.premium.priceUsd),
+      formatted_aoa: fmt(toKz(PLANS.premium.priceUsd)),
+      credits: "Ilimitado",
+    },
+  };
+}
+
 export async function GET() {
+  let settings: PaymentSettingsRow | null = null;
+
   try {
     const supabase = createClient();
-    
-    // 1. Buscar configurações dinâmicas do banco de dados
-    const { data: dbSettings, error: dbError } = await supabase
+    const { data, error } = await supabase
       .from("payment_settings")
       .select("*")
       .eq("id", "default")
       .maybeSingle();
 
-    if (dbError) {
-      console.warn("[PAYMENT_SETTINGS] Aviso ao ler payment_settings:", dbError.message);
+    if (error) {
+      console.warn("[PAYMENT_SETTINGS] Leitura indisponível:", error.message);
     }
-
-    // Configurações padrão com fallback seguro
-    const bankName = dbSettings?.bank_name || "BFA / BAI";
-    const accountHolder = dbSettings?.account_holder || "José Escrivão Silvestre";
-    const expressPhone = dbSettings?.express_phone || "+244 930 339 436";
-    const iban = dbSettings?.iban || "";
-    const notes = dbSettings?.notes || "Envie o comprovativo após a transferência para aprovação imediata.";
-    const fallbackRate = Number(dbSettings?.usd_to_aoa_rate) || 950;
-
-    // 2. Buscar cotação cambial em tempo real USD -> AOA (Kwanza)
-    let liveRate = fallbackRate;
-    try {
-      const exchangeRes = await fetch("https://open.er-api.com/v6/latest/USD", {
-        next: { revalidate: 3600 } // cache de 1 hora
-      });
-      if (exchangeRes.ok) {
-        const data = await exchangeRes.json();
-        if (data?.rates?.AOA && typeof data.rates.AOA === "number") {
-          liveRate = Math.round(data.rates.AOA);
-        }
-      }
-    } catch (exchangeErr) {
-      console.warn("[EXCHANGE_RATE] Falha ao consultar câmbio ao vivo, usando fallback:", exchangeErr);
-    }
-
-    // Calcular valores dos planos em Kwanza em tempo real
-    const proUsd = 5;
-    const ultraUsd = 10;
-    const premiumUsd = 39;
-    const proAoa = Math.round(proUsd * liveRate);
-    const ultraAoa = Math.round(ultraUsd * liveRate);
-    const premiumAoa = Math.round(premiumUsd * liveRate);
-
-    return NextResponse.json({
-      bank_name: bankName,
-      account_holder: accountHolder,
-      express_phone: expressPhone,
-      iban: iban,
-      notes: notes,
-      usd_to_aoa_rate: liveRate,
-      plans: {
-        pro: {
-          usd: proUsd,
-          aoa: proAoa,
-          formatted_aoa: proAoa.toLocaleString("pt-AO") + " Kz",
-          credits: "22.000 Cr�ditos"
-        },
-        ultra: {
-          usd: ultraUsd,
-          aoa: ultraAoa,
-          formatted_aoa: ultraAoa.toLocaleString("pt-AO") + " Kz",
-          credits: "100.000 Cr�ditos"
-        },
-        premium: {
-          usd: premiumUsd,
-          aoa: premiumAoa,
-          formatted_aoa: premiumAoa.toLocaleString("pt-AO") + " Kz",
-          credits: "Ilimitado"
-        }
-      }
-    });
+    settings = (data as PaymentSettingsRow | null) ?? null;
   } catch (err) {
-    console.error("[PAYMENT_SETTINGS_ERROR]", err);
-    return NextResponse.json({
-      bank_name: "BFA / BAI",
-      account_holder: "José Escrivão Silvestre",
-      express_phone: "+244 930 339 436",
-      iban: "",
-      usd_to_aoa_rate: 950,
-      plans: {
-        pro: { usd: 10, aoa: 9500, formatted_aoa: "9.500 Kz", credits: "22.000 Cr�ditos" },
-        ultra: { usd: 19, aoa: 19000, formatted_aoa: "19.000 Kz", credits: "100.000 Cr�ditos" },
-        premium: { usd: 39, aoa: 39000, formatted_aoa: "39.000 Kz", credits: "Ilimitado" }
-      }
-    });
+    console.warn("[PAYMENT_SETTINGS] Falha ao ler configuração:", err);
   }
+
+  const fallbackRate = Number(settings?.usd_to_aoa_rate) || FALLBACK_RATE;
+  let liveRate = fallbackRate;
+
+  try {
+    const exchange = await fetch("https://open.er-api.com/v6/latest/USD", {
+      next: { revalidate: 3600 },
+    });
+    if (exchange.ok) {
+      const data = await exchange.json();
+      if (typeof data?.rates?.AOA === "number") {
+        liveRate = Math.round(data.rates.AOA);
+      }
+    }
+  } catch {
+    console.warn("[PAYMENT_SETTINGS] Câmbio indisponível, a usar taxa de referência.");
+  }
+
+  return NextResponse.json({
+    bank_name: settings?.bank_name || "BFA / BAI",
+    account_holder: settings?.account_holder || "José Escrivão Silvestre",
+    express_phone: settings?.express_phone || "",
+    iban: settings?.iban || "",
+    notes:
+      settings?.notes ||
+      "Envie o comprovativo após a transferência para ativação quase imediata.",
+    usd_to_aoa_rate: liveRate,
+    plans: buildPlanPayload(liveRate),
+  });
 }

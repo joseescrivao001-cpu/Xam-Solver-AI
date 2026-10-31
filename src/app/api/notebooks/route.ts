@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { ownsNotebook } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -84,7 +85,7 @@ export async function POST(req: Request) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: "Erro interno. Tente novamente." }, { status: 500 });
     }
 
     return NextResponse.json({ notebook });
@@ -129,7 +130,7 @@ export async function PATCH(req: Request) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: "Erro interno. Tente novamente." }, { status: 500 });
     }
 
     return NextResponse.json({ notebook: updated });
@@ -157,6 +158,14 @@ export async function DELETE(req: Request) {
     const serviceClient = createServiceClient();
     const db = serviceClient || supabase;
 
+    // SEGURANÇA: a verificação de propriedade tem de acontecer ANTES das
+    // eliminações em cascata. Antes deste guard, um id de caderno de outro
+    // utilizador apagava materiais, notas e analytics alheios (o delete final
+    // filtrava por user_id, mas os efeitos colaterais já tinham ocorrido).
+    if (!(await ownsNotebook(db, id, user.id))) {
+      return NextResponse.json({ error: "Caderno não encontrado." }, { status: 404 });
+    }
+
     // Desvincular conversas associadas
     await db.from("conversations").update({ notebook_id: null }).eq("notebook_id", id);
     // Deletar materiais e notas associadas
@@ -171,7 +180,7 @@ export async function DELETE(req: Request) {
       .eq("user_id", user.id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: "Erro interno. Tente novamente." }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });

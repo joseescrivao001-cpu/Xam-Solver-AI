@@ -77,7 +77,7 @@ export async function POST(req: Request) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: "Erro interno. Tente novamente." }, { status: 500 });
       }
 
       return NextResponse.json({ note: updated });
@@ -95,7 +95,7 @@ export async function POST(req: Request) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: "Erro interno. Tente novamente." }, { status: 500 });
       }
 
       return NextResponse.json({ note: created });
@@ -132,7 +132,7 @@ export async function DELETE(req: Request) {
       .eq("user_id", user.id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: "Erro interno. Tente novamente." }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });

@@ -1,5 +1,22 @@
 import { createClient } from "@/lib/supabase/server";
+import { isConfiguredAdmin } from "@/lib/admin-config";
 import { NextResponse } from "next/server";
+
+/**
+ * Autorização administrativa.
+ *
+ * Alteração de segurança (2026-10-28): os identificadores de administrador
+ * deixaram de estar fixos no código. Antes existiam um e-mail e dois UUIDs
+ * literais em `middleware.ts`, neste ficheiro e em `user/profile/route.ts`,
+ * e a variável de ambiente era apenas ADITIVA — remover um admin do ambiente
+ * não o removia da aplicação, só uma alteração de código o faria.
+ *
+ * Configuração (Vercel → Environment Variables):
+ *   ADMIN_USER_ID   UUIDs separados por vírgula (autoridade máxima)
+ *   ADMIN_EMAILS    e-mails separados por vírgula
+ *
+ * Falha fechada: sem configuração, ninguém é administrador.
+ */
 
 export interface AdminAuthResult {
   isAdmin: boolean;
@@ -8,60 +25,35 @@ export interface AdminAuthResult {
   error?: string;
 }
 
-/**
- * Validação por UUID Estático configurado na Vercel (ADMIN_USER_ID).
- * O acesso só será concedido se user_id === process.env.ADMIN_USER_ID.
- * Suporta também múltiplos IDs separados por vírgula.
- */
-const MASTER_ADMIN_EMAIL = "joseescrivao001@gmail.com";
-const MASTER_ADMIN_UUIDS = [
-  "604c5dee-7dd6-4590-9f11-9df9043803f2",
-  "07167607-a59a-48ce-a5b9-1dcc6f01f2f0"
-];
-
-export function isSuperAdmin(userId?: string | null, userEmail?: string | null): boolean {
-  if (!userId && !userEmail) return false;
-
-  // Reconhece instantaneamente o e-mail do Dono/Fundador
-  if (userEmail && userEmail.toLowerCase().trim() === MASTER_ADMIN_EMAIL) {
-    return true;
-  }
-
-  const configuredAdminId = process.env.ADMIN_USER_ID?.trim();
-  const allowedIds = configuredAdminId
-    ? configuredAdminId.split(',').map((id) => id.trim()).filter(Boolean)
-    : [...MASTER_ADMIN_UUIDS];
-
-  for (const masterId of MASTER_ADMIN_UUIDS) {
-    if (!allowedIds.includes(masterId)) {
-      allowedIds.push(masterId);
-    }
-  }
-
-  return !!(userId && allowedIds.includes(userId));
+export function isSuperAdmin(
+  userId?: string | null,
+  userEmail?: string | null
+): boolean {
+  return isConfiguredAdmin(userId, userEmail);
 }
 
 /**
- * Verificação estrita Server-Side:
- * 1. O usuário deve estar autenticado.
- * 2. O user.id DEVE corresponder estritamente ao ADMIN_USER_ID configurado nas variáveis de ambiente.
- * 3. O usuário deve possuir is_admin = true e não estar banido no banco de dados.
+ * Verificação estrita do lado do servidor:
+ *  1. sessão válida;
+ *  2. identidade consta da configuração de ambiente;
+ *  3. perfil existe, `is_admin = true` e não está banido.
  */
 export async function verifyAdmin(): Promise<AdminAuthResult> {
   try {
     const supabase = createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
     if (authError || !user) {
       return { isAdmin: false, error: "Not Found" };
     }
 
-    // Camada 1: Blindagem por UUID Estático (ADMIN_USER_ID na Vercel) ou E-mail Mestre
     if (!isSuperAdmin(user.id, user.email)) {
       return { isAdmin: false, error: "Not Found" };
     }
 
-    // Camada 2: Validação de integridade no banco de dados
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("is_admin, is_banned")
@@ -76,11 +68,7 @@ export async function verifyAdmin(): Promise<AdminAuthResult> {
       return { isAdmin: false, error: "Not Found" };
     }
 
-    return {
-      isAdmin: true,
-      userId: user.id,
-      email: user.email,
-    };
+    return { isAdmin: true, userId: user.id, email: user.email };
   } catch (err) {
     console.error("[ADMIN_AUTH_ERROR]", err);
     return { isAdmin: false, error: "Not Found" };
@@ -88,14 +76,11 @@ export async function verifyAdmin(): Promise<AdminAuthResult> {
 }
 
 /**
- * Ocultação de Rota: Retorna sempre 404 (Not Found) em vez de 403 (Proibido)
- * para impedir enumeração e descoberta de rotas administrativas por atacantes.
+ * Ocultação de rota: 404 em vez de 403 para não permitir enumeração de
+ * endpoints administrativos.
  */
 export function notFoundResponse(message = "Not Found") {
-  return NextResponse.json(
-    { error: message },
-    { status: 404 }
-  );
+  return NextResponse.json({ error: message }, { status: 404 });
 }
 
 export function unauthorizedResponse(message = "Not Found") {

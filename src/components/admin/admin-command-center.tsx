@@ -648,7 +648,7 @@ export default function AdminCommandCenter() {
 
                 {/* Plan filter */}
                 <div className="flex items-center gap-1">
-                  {["all", "free", "pro", "ultra", "premium"].map((pl) => (
+                  {["all", "free", "pro", "premium"].map((pl) => (
                     <button
                       key={pl}
                       onClick={() => setUserPlanFilter(pl)}
@@ -1053,8 +1053,7 @@ export default function AdminCommandCenter() {
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white outline-none focus:border-indigo-500"
                 >
                   <option value="free">Free (Gratuito)</option>
-                  <option value="pro">Pro (2.000 Créditos)</option>
-                  <option value="ultra">Ultra (10.000 Créditos)</option>
+                  <option value="pro">Pro (20.000 Créditos)</option>
                   <option value="premium">Premium (VIP Ilimitado)</option>
                 </select>
               </div>

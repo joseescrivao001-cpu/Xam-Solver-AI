@@ -1,7 +1,21 @@
-import { resolveModelId } from "@/lib/models";
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
+
+import { verifyAdmin } from "@/lib/admin-auth";
+import { apiError } from "@/lib/http";
+
+/**
+ * Diagnóstico de conectividade com o fornecedor de IA.
+ *
+ * Correção de segurança (2026-10-28): esta rota era PÚBLICA — não exigia
+ * sessão — e, além de revelar o prefixo e o sufixo da chave
+ * (`keyPreview: "csk_...9f2a"`), disparava seis inferências pagas por pedido,
+ * o que permitia a qualquer visitante queimar saldo em ciclo.
+ *
+ * Passa a exigir administrador e a não expor qualquer fragmento de chave.
+ * Desativada em produção salvo `ENABLE_SYSTEM_CHECK=true`.
+ */
 
 const LOCKED_MODELS = [
   'deepseek-v4-flash',
@@ -12,107 +26,69 @@ const LOCKED_MODELS = [
   'claude-opus-5'
 ];
 
-function getApiKey(): { key: string; name: string } {
-  const key = process.env.CEREBRAS_API_KEY;
-  if (key && typeof key === 'string' && key.trim()) {
-    return { key: key.trim(), name: 'CEREBRAS_API_KEY' };
-  }
-  return { key: '', name: 'NOT_SET' };
-}
-
-
-
 interface ModelResult {
   status: string;
-  cerebrasModel: string;
   response?: string;
   error?: string;
-  endpoint?: string;
 }
 
 export async function GET() {
-  const { key: apiKey, name: keySourceName } = getApiKey();
+  const auth = await verifyAdmin();
+  if (!auth.isAdmin) {
+    return apiError("not_found", { scope: "[SYSTEM_CHECK]" });
+  }
 
-  const keyPreview = apiKey
-    ? apiKey.slice(0, 4) + '...' + apiKey.slice(-4)
-    : 'EMPTY';
+  if (process.env.NODE_ENV === 'production' && process.env.ENABLE_SYSTEM_CHECK !== 'true') {
+    return apiError("not_found", {
+      scope: "[SYSTEM_CHECK]",
+      message: "Diagnóstico desativado em produção.",
+    });
+  }
 
+  const apiKey = process.env.CEREBRAS_API_KEY?.trim() || '';
   const results: Record<string, ModelResult> = {};
-  const baseURL = 'https://api.cerebras.ai/v1';
+
+  if (!apiKey) {
+    return apiError("upstream_unavailable", {
+      scope: "[SYSTEM_CHECK]",
+      message: "CEREBRAS_API_KEY não configurada.",
+    });
+  }
 
   for (const model of LOCKED_MODELS) {
-    const cerebrasModel = resolveModelId(model);
-
-    if (!apiKey) {
-      results[model] = {
-        status: 'error',
-        cerebrasModel,
-        error: 'CEREBRAS_API_KEY not found in Vercel environment variables.'
-      };
-      continue;
-    }
-
-    const url = `${baseURL}/chat/completions`;
-
     try {
-      const res = await fetch(url, {
+      const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'User-Agent': 'cerebras-cloud-sdk/typescript/1.0.0'
         },
         body: JSON.stringify({
-          model: cerebrasModel,
+          model,
           messages: [{ role: 'user', content: 'Say OK' }],
           max_tokens: 5
         })
       });
 
       if (!res.ok) {
-        const errText = await res.text();
-        results[model] = {
-          status: 'error',
-          cerebrasModel,
-          error: `${res.status}: ${errText.slice(0, 200)}`,
-          endpoint: baseURL
-        };
+        results[model] = { status: 'error', error: `HTTP ${res.status}` };
         continue;
       }
 
       const data = await res.json();
-      const text = data.choices?.[0]?.message?.content || data.message || 'OK';
-
-      results[model] = {
-        status: 'success',
-        cerebrasModel,
-        response: text.trim().slice(0, 100),
-        endpoint: baseURL
-      };
-    } catch (err: unknown) {
-      results[model] = {
-        status: 'error',
-        cerebrasModel,
-        error: err instanceof Error ? err.message : String(err),
-        endpoint: baseURL
-      };
+      const text = data.choices?.[0]?.message?.content || 'OK';
+      results[model] = { status: 'success', response: String(text).trim().slice(0, 60) };
+    } catch {
+      results[model] = { status: 'error', error: 'Falha de rede' };
     }
   }
 
   const successCount = Object.values(results).filter(r => r.status === 'success').length;
 
-  return new Response(JSON.stringify({
+  return Response.json({
     timestamp: new Date().toISOString(),
-    connectionType: 'NATIVE_CEREBRAS_API',
-    summary: `${successCount}/${LOCKED_MODELS.length} models operational`,
-    envKeys: {
-      detected: !!apiKey,
-      variable: keySourceName,
-      keyPreview
-    },
-    models: results
-  }, null, 2), {
-    headers: { 'Content-Type': 'application/json' }
+    summary: `${successCount}/${LOCKED_MODELS.length} modelos operacionais`,
+    models: results,
   });
 }

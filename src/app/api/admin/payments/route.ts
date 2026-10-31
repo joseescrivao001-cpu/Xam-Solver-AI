@@ -1,4 +1,4 @@
-import { PLANS } from "@/lib/plan-config";
+import { PLANS, creditsForPlan, isUnlimitedPlan, normalizePlanId } from "@/lib/plans";
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { verifyAdmin, unauthorizedResponse } from "@/lib/admin-auth";
@@ -71,11 +71,27 @@ export async function POST(request: Request) {
     }
 
     if (action === "approve") {
-      const plan = proof.plan_type;
-      let creditsToAdd = 2000;
-      if (plan === "pro") creditsToAdd = 2000;
-      if (plan === "ultra") creditsToAdd = 10000;
-      if (plan === "premium") creditsToAdd = 999999999;
+      // Idempotência: nunca creditar duas vezes o mesmo comprovativo.
+      if (proof.status === "approved") {
+        return NextResponse.json(
+          { error: "Este comprovativo já foi aprovado." },
+          { status: 409 }
+        );
+      }
+
+      // Valores vêm da fonte única de planos (antes: 2.000 / 10.000 / 999.999.999).
+      const plan = normalizePlanId(proof.plan_type);
+
+      // Mesma regra da função SQL approve_payment_proof: um comprovativo não
+      // ativa o plano gratuito.
+      if (plan === "free") {
+        return NextResponse.json(
+          { error: "Um comprovativo não pode ativar o plano gratuito." },
+          { status: 400 }
+        );
+      }
+
+      const creditsToAdd = creditsForPlan(plan);
 
       // 1. Atualizar Perfil do Usuário
       const { data: profile } = await supabase
@@ -85,7 +101,9 @@ export async function POST(request: Request) {
         .single();
 
       const currentBalance = profile?.credits_balance || 0;
-      const newBalance = (plan === "premium" || plan === "ultra") ? PLANS.premium.credits : currentBalance + creditsToAdd;
+      const newBalance = isUnlimitedPlan(plan)
+        ? PLANS.premium.credits
+        : currentBalance + creditsToAdd;
 
       const { error: updateProfileErr } = await supabase
         .from("profiles")

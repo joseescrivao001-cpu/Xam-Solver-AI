@@ -1,150 +1,225 @@
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ============================================================================
+   EXAM SOLVER AI — SISTEMA DE DESIGN (tokens)
+   ----------------------------------------------------------------------------
+   Correção estrutural (2026-10-28):
+     · antes, `:root` definia os tokens em `oklch(...)` mas o `tailwind.config`
+       consumia-os como `hsl(var(--token))`, produzindo cores inválidas — o tema
+       claro estava literalmente quebrado e por isso o `body` era forçado a
+       `bg-zinc-950`;
+     · o `@import "shadcn/tailwind.css"` (sintaxe Tailwind v4: `@theme`,
+       `@custom-variant`) foi removido: o projeto corre Tailwind 3.4, onde esse
+       ficheiro é ignorado;
+     · os tokens passam a existir em dois temas coerentes, com a mesma estrutura
+       de nomes que o resto da aplicação já usa.
+   ========================================================================== */
+
+@layer base {
+  :root {
+    /* Superfícies */
+    --background: 0 0% 100%;
+    --foreground: 240 10% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 8%;
+    --surface-1: 240 20% 99%;
+    --surface-2: 240 16% 97%;
+
+    /* Marca — azul sóbrio, usado com moderação */
+    --primary: 217 91% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 14% 96%;
+    --secondary-foreground: 240 10% 12%;
+    --accent: 217 91% 96%;
+    --accent-foreground: 217 91% 32%;
+
+    /* Texto secundário e estados */
+    --muted: 240 14% 96%;
+    --muted-foreground: 240 5% 42%;
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 62% 34%;
+    --warning: 32 95% 42%;
+    --info: 217 91% 45%;
+
+    /* Traços */
+    --border: 240 10% 90%;
+    --border-strong: 240 8% 82%;
+    --input: 240 10% 90%;
+    --ring: 217 91% 45%;
+
+    /* Gráficos */
+    --chart-1: 217 91% 45%;
+    --chart-2: 199 89% 48%;
+    --chart-3: 240 5% 42%;
+    --chart-4: 32 95% 42%;
+    --chart-5: 152 62% 34%;
+
+    /* Formas */
+    --radius: 0.75rem;
+    --radius-md: 0.625rem;
+    --radius-lg: 1rem;
+    --radius-xl: 1.25rem;
+
+    /* Movimento */
+    --motion-fast: 140ms;
+    --motion-base: 220ms;
+    --motion-slow: 320ms;
+  }
+
+  .dark {
+    --background: 240 8% 7%;
+    --foreground: 0 0% 96%;
+    --card: 240 6% 10%;
+    --card-foreground: 0 0% 96%;
+    --popover: 240 6% 11%;
+    --popover-foreground: 0 0% 96%;
+    --surface-1: 240 6% 9%;
+    --surface-2: 240 6% 12%;
+
+    --primary: 217 91% 58%;
+    --primary-foreground: 240 10% 6%;
+    --secondary: 240 5% 16%;
+    --secondary-foreground: 0 0% 96%;
+    --accent: 217 60% 18%;
+    --accent-foreground: 217 91% 82%;
+
+    --muted: 240 5% 16%;
+    --muted-foreground: 240 5% 62%;
+    --destructive: 0 62% 52%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 52% 44%;
+    --warning: 32 90% 52%;
+    --info: 217 91% 62%;
+
+    --border: 240 5% 18%;
+    --border-strong: 240 5% 26%;
+    --input: 240 5% 18%;
+    --ring: 217 91% 58%;
+
+    --chart-1: 217 91% 62%;
+    --chart-2: 199 89% 58%;
+    --chart-3: 240 5% 62%;
+    --chart-4: 32 90% 58%;
+    --chart-5: 152 52% 48%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "cv11", "ss01";
+    font-variation-settings: "opsz" 32;
+  }
+
+  /* Foco visível e consistente em toda a aplicação */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring/60 ring-offset-2 ring-offset-background;
+  }
+
+  ::selection {
+    @apply bg-primary/20 text-foreground;
+  }
+
+  /* Números alinhados em tabelas e métricas */
+  table,
+  [data-numeric] {
+    font-variant-numeric: tabular-nums;
+  }
+}
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
-}
 
-@keyframes gradientShift {
-  0%   { background-position: 0% 0%; }
-  100% { background-position: 200% 0%; }
-}
+  /* Esconde a barra de scroll mantendo o comportamento (o projeto já usava
+     esta classe sem a ter definido). */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 
-@layer base {
-  .theme {
-    --font-heading: var(--font-sans);
-    --font-sans: var(--font-sans);
+  .skeleton-shimmer {
+    background-image: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 0%,
+      hsl(var(--surface-2)) 50%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s ease-in-out infinite;
   }
-  :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
-  }
-  .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 5%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 250 84% 54%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 240 4% 16%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 4% 16%;
-    --muted-foreground: 240 5% 65%;
-    --accent: 250 84% 54%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 62% 30%;
-    --border: 240 4% 16%;
-    --input: 240 4% 16%;
-    --ring: 250 84% 54%;
-  }
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-zinc-950 text-zinc-50;
-  }
-  html {
-    @apply font-sans;
-  }
-}
 
-@layer utilities {
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  .blinking-cursor {
+    display: inline-block;
+    width: 6px;
+    height: 1.1em;
+    background-color: hsl(var(--primary));
+    vertical-align: text-bottom;
+    animation: blink 1s step-end infinite;
+    margin-left: 3px;
+    border-radius: 2px;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  /* KaTeX: equações longas deslizam em vez de rebentar o layout */
   .math-renderer .katex-display {
     overflow-x: auto;
     overflow-y: hidden;
     padding-bottom: 0.5rem;
     scrollbar-width: thin;
   }
-  
+
   .math-renderer .katex-display::-webkit-scrollbar {
     height: 6px;
   }
-  
+
   .math-renderer .katex-display::-webkit-scrollbar-track {
     background: transparent;
   }
-  
+
   .math-renderer .katex-display::-webkit-scrollbar-thumb {
-    @apply bg-zinc-300 dark:bg-zinc-700 rounded-full;
+    @apply rounded-full bg-border-strong;
   }
-  
-  .skeleton-shimmer {
-    background: linear-gradient(90deg, theme("colors.zinc.200") 0%, theme("colors.zinc.100") 50%, theme("colors.zinc.200") 100%);
-    background-size: 200% 100%;
-    animation: shimmer 1.5s infinite;
-  }
-  
-  .dark .skeleton-shimmer {
-    background: linear-gradient(90deg, theme("colors.zinc.800") 0%, theme("colors.zinc.700") 50%, theme("colors.zinc.800") 100%);
-    background-size: 200% 100%;
-  }
-  
-  @keyframes shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
-  }
-  
-  .blinking-cursor {
-    display: inline-block;
-    width: 6px;
-    height: 1.2em;
-    background-color: theme("colors.indigo.500");
-    vertical-align: middle;
-    animation: blink 1s step-end infinite;
-    margin-left: 4px;
-    border-radius: 2px;
-  }
-  
-  @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0; }
+
+  .math-renderer .katex {
+    font-size: 1.03em;
   }
 }
 
-
-@layer base {
-  button:focus-visible, 
-  a:focus-visible,
-  input:focus-visible,
-  textarea:focus-visible {
-    @apply outline-none ring-2 ring-indigo-500/50 ring-offset-2 ring-offset-background;
+/* Respeitar quem pediu menos movimento ao sistema */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
-

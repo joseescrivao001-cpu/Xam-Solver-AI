@@ -91,7 +91,7 @@ type AnalyticsData = {
 export default function ExamSolverGrand() {
   const supabase = createClient();
   const router = useRouter();
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
 
   // Data State
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -1718,8 +1718,8 @@ export default function ExamSolverGrand() {
                   <span className="font-semibold text-[15px] tracking-tight">ExamSolver</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition">
-                    {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                  <button onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')} className="p-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition">
+                    {resolvedTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                   </button>
                   <button onClick={() => toggleSidebar(false)} className="p-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition" title="Fechar Menu">
                     <X className="w-4 h-4" />
@@ -2843,8 +2843,8 @@ export default function ExamSolverGrand() {
                       <p className="text-sm font-medium text-zinc-900 dark:text-zinc-200">Aparência do Sistema</p>
                       <p className="text-xs text-zinc-500">Alternar entre tema escuro e claro</p>
                     </div>
-                    <Button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} variant="outline" size="sm" className="rounded-xl text-xs">
-                      {theme === 'dark' ? "Modo Claro" : "Modo Escuro"}
+                    <Button onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')} variant="outline" size="sm" className="rounded-xl text-xs">
+                      {resolvedTheme === 'dark' ? "Modo Claro" : "Modo Escuro"}
                     </Button>
                   </div>
 
